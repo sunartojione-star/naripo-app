@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { productAPI } from '@/utils/laravelAPI';
-import { Product } from '@types/index';
+import { useCallback, useEffect, useState } from "react";
+import { productAPI } from "@/utils/laravelAPI";
+import { Product } from "@/types";
 
 interface UseProductsReturn {
   products: Product[];
@@ -20,12 +20,12 @@ export function useProducts(params?: any): UseProductsReturn {
       setError(null);
 
       const response = await productAPI.getAll(params);
-      
+
       // Handle Laravel API response structure
       const data = response.data || response;
       setProducts(Array.isArray(data) ? data : data.data || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch products');
+      setError(err.message || "Failed to fetch products");
       setProducts([]);
     } finally {
       setLoading(false);
@@ -45,7 +45,9 @@ interface UseProductReturn {
   error: string | null;
 }
 
-export function useProductDetail(productId?: string | number): UseProductReturn {
+export function useProductDetail(
+  productId?: string | number,
+): UseProductReturn {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(!!productId);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function useProductDetail(productId?: string | number): UseProductReturn 
         const data = response.data || response;
         setProduct(data);
       } catch (err: any) {
-        setError(err.message || 'Failed to fetch product');
+        setError(err.message || "Failed to fetch product");
         setProduct(null);
       } finally {
         setLoading(false);

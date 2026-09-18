@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "target": "es5",
     "lib": ["dom", "dom.iterable", "esnext"],
     "jsx": "preserve",
@@ -21,7 +22,9 @@
       "@hooks/*": ["src/hooks/*"],
       "@styles/*": ["src/styles/*"],
       "@types/*": ["src/types/*"]
-    }
+    },
+    "incremental": true,
+    "isolatedModules": true
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import api from '@/utils/api';
-import { Product } from '@types/index';
+import { useEffect, useState } from "react";
+import api from "@/utils/api";
+// import { Product } from '@types/index';
+import { Product } from "@/types";
 
 interface UseProductReturn {
   product: Product | null;
@@ -23,7 +24,7 @@ export function useProduct(productId?: string): UseProductReturn {
         setProduct(response.data);
         setError(null);
       } catch (err) {
-        setError('Failed to fetch product');
+        setError("Failed to fetch product");
         setProduct(null);
       } finally {
         setLoading(false);

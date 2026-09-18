@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { create } from 'zustand';
-import { User } from '@types/index';
+import { create } from "zustand";
+import { User } from "@/types";
 
 interface UserState {
   user: User | null;
@@ -14,15 +14,15 @@ interface UserState {
 export const useUserStore = create<UserState>((set) => ({
   user: null,
   isLoggedIn: false,
-  
+
   setUser: (user: User) => {
     set({ user, isLoggedIn: true });
   },
-  
+
   logout: () => {
     set({ user: null, isLoggedIn: false });
   },
-  
+
   updateUser: (updatedUser: Partial<User>) => {
     set((state) => ({
       user: state.user ? { ...state.user, ...updatedUser } : null,
