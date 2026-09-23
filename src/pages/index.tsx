@@ -11,6 +11,7 @@ import {
   FiStar,
   FiDollarSign,
   FiShoppingBag,
+  FiClipboard,
 } from "react-icons/fi";
 
 export default function Home() {
@@ -19,6 +20,7 @@ export default function Home() {
   const [favoriteKdBrs, setFavoriteKdBrs] = useState<Set<string>>(new Set());
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
   const [errorProducts, setErrorProducts] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>("");
 
   const router = useRouter();
   const apiUrl =
@@ -27,6 +29,18 @@ export default function Home() {
   // Pastikan komponen sudah termuat di browser (Mencegah Hydration Error)
   useEffect(() => {
     setIsMounted(true);
+    // Ambil data user role dari localStorage jika ada
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUserRole(
+          parsedUser.role || parsedUser.Hak || parsedUser.level_user || "",
+        );
+      } catch (e) {
+        console.error("Gagal parsing data user", e);
+      }
+    }
   }, []);
 
   // Fetch produk terbaru (ket: 'BARU') dan daftar favorit user
@@ -156,7 +170,7 @@ export default function Home() {
       alert("Silakan login terlebih dahulu.");
       return;
     }
-    router.push("/laporan/omsetku"); // Diarahkan langsung ke halaman omsetku.tsx
+    router.push("/laporan/omsetku");
   };
 
   const handleCekOrderanku = () => {
@@ -166,6 +180,33 @@ export default function Home() {
       return;
     }
     router.push("/laporan/laporanpo");
+  };
+
+  // Handler Tombol Input BS
+  const handleInputBS = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Silakan login terlebih dahulu.");
+      return;
+    }
+    router.push("/BS/halamanBS");
+  };
+
+  // Handler Tombol Stok Opname (Validasi khusus Admin)
+  const handleStokOpname = () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Silakan login terlebih dahulu.");
+      return;
+    }
+
+    // Validasi role admin (disesuaikan dengan penamaan role di backend, misal "admin")
+    if (userRole.toLowerCase() !== "admin") {
+      alert("Akses ditolak. Menu Stok Opname hanya khusus untuk Admin.");
+      return;
+    }
+
+    router.push("/opname/halamanopname"); // Arahkan ke halaman Stok Opname
   };
 
   if (!isMounted) return null;
@@ -189,6 +230,24 @@ export default function Home() {
                   Belanja Sekarang
                   <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
                 </Link>
+
+                {/* INPUT BS */}
+                <button
+                  onClick={handleInputBS}
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3.5 rounded-xl font-bold transition shadow-lg flex items-center gap-2"
+                >
+                  <FiBox className="w-5 h-5" />
+                  INPUT BS
+                </button>
+
+                {/* STOK OPNAME (Khusus Admin) */}
+                <button
+                  onClick={handleStokOpname}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3.5 rounded-xl font-bold transition shadow-lg flex items-center gap-2"
+                >
+                  <FiClipboard className="w-5 h-5" />
+                  STOK OPNAME
+                </button>
 
                 {/* CEK OMSET */}
                 <button
