@@ -50,9 +50,13 @@ export default function ProductCard({
     e.preventDefault();
 
     // Normalisasi kode produk menjadi string agar konsisten dengan store
+    // const productCode = String(
+    //   product.kd_bs || product.id || product.kd_br || product.kd || "",
+    // ).trim();
+
     const productCode = String(
-      product.kd_bs || product.id || product.kd_br || product.kd || "",
-    ).trim();
+    product.kd_bs || "",
+).trim();
 
     if (!productCode) {
       console.error("Kode produk BS tidak valid:", product);

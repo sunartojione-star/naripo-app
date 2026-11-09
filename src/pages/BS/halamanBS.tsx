@@ -180,9 +180,9 @@ export default function HalamanBS() {
         setFavoriteKdBrs((prevSet) => {
           const newSet = new Set(prevSet);
           if (result.data.is_favorite) {
-            newSet.add(product.kd_bs);
+            newSet.add(String(product.kd_bs));
           } else {
-            newSet.delete(product.kd_bs);
+            newSet.delete(String(product.kd_bs));
           }
           return newSet;
         });
@@ -320,7 +320,8 @@ export default function HalamanBS() {
                 <ProductCard
                   key={product.kd_bs}
                   product={product}
-                  isFavorite={favoriteKdBrs.has(product.kd_bs)}
+                  // isFavorite={favoriteKdBrs.has(product.kd_bs)}
+                  isFavorite={favoriteKdBrs.has(String(product.kd_bs))}
                   onToggleFavorite={handleToggleFavorite}
                 />
               ))}
