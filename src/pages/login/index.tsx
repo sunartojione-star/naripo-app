@@ -21,7 +21,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // Helper ID perangkat unik agar 1 akun bisa aktif di banyak HP sekaligus
   const getOrCreateDeviceId = () => {
     if (typeof window === "undefined") return "web-device";
     let devId = localStorage.getItem("device_id");
@@ -61,19 +60,27 @@ export default function LoginPage() {
         }),
       });
 
-      const data = await res.json();
+      // Parsing aman agar tidak crash jika server mengirim halaman error 500
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        if (!res.ok) {
+          throw new Error("Email/username tidak terdaftar atau password salah. Periksa kembali ketikan Anda.");
+        }
+      }
 
-      if (!res.ok || (data.success !== undefined && !data.success)) {
+      if (!res.ok || (data && data.success !== undefined && !data.success)) {
         throw new Error(
-          data.message || "Login gagal, periksa kembali username/email dan password."
+          data?.message || "Email/username tidak terdaftar atau password salah. Periksa kembali ketikan Anda."
         );
       }
 
-      const token = data.data?.token || data.token;
-      const user = data.data?.user || data.user || data.data;
+      const token = data?.data?.token || data?.token;
+      const user = data?.data?.user || data?.user || data?.data;
 
       if (!token) {
-        throw new Error("Token autentikasi tidak ditemukan dari server.");
+        throw new Error("Email/username tidak terdaftar atau password salah.");
       }
 
       localStorage.setItem("token", token);
@@ -88,7 +95,7 @@ export default function LoginPage() {
 
       router.push("/");
     } catch (err: any) {
-      setError(err.message || "Terjadi kesalahan pada server.");
+      setError(err.message || "Terjadi kesalahan saat masuk. Periksa kembali email dan password.");
     } finally {
       setLoading(false);
     }
@@ -101,14 +108,11 @@ export default function LoginPage() {
       </Head>
 
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-100/60 flex items-center justify-center p-4 relative overflow-hidden">
-        {/* Dekorasi Cahaya Ambient di Latar Belakang */}
         <div className="absolute -top-24 -left-24 w-80 h-80 bg-blue-400/20 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-24 -right-24 w-80 h-80 bg-indigo-400/20 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-200">
           <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-6 sm:p-8">
-            
-            {/* Header: Logo & Nama Koperasi */}
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/25 mb-3">
                 <img
@@ -129,7 +133,6 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Kotak Pesan Error */}
             {error && (
               <div className="mb-4 rounded-xl bg-red-50/90 border border-red-200 p-3 text-xs sm:text-sm text-red-600 flex items-center gap-2">
                 <span className="shrink-0 font-bold">⚠️</span>
@@ -137,9 +140,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Form Input */}
             <form onSubmit={handleLogin} className="space-y-4">
-              {/* Input Username / Email */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Username atau Email
@@ -159,7 +160,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Input Password dengan Tombol Intip (Eye) */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Password
@@ -191,7 +191,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Tombol Submit Login */}
               <button
                 type="submit"
                 disabled={loading}
@@ -211,7 +210,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Pembatas / Divider */}
             <div className="relative my-6 text-center">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-200"></div>
@@ -221,7 +219,6 @@ export default function LoginPage() {
               </span>
             </div>
 
-            {/* Tombol Buat Akun Baru */}
             <Link
               href="/login/register"
               className="block w-full py-2.5 text-center rounded-xl border border-blue-600/30 text-blue-600 hover:bg-blue-50/70 font-bold text-xs sm:text-sm transition active:scale-[0.99]"
@@ -229,7 +226,6 @@ export default function LoginPage() {
               Daftar Akun Baru
             </Link>
 
-            {/* Footer Keamanan */}
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
               <FiShield className="w-3.5 h-3.5 text-emerald-500" />
               <span>Jalur Akses Aman & Terenkripsi</span>
