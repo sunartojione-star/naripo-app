@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import {
   FiMenu,
   FiX,
@@ -12,14 +12,13 @@ import {
   FiChevronDown,
   FiBox,
 } from "react-icons/fi";
-import { useCartStoreBS } from "@/store/cartStoreBS"; // Store Zustand khusus BS
-import { useCartStore } from "@/store/cartStore"; // Store Zustand untuk keranjang reguler
+import { useCartStoreBS } from "@/store/cartStoreBS";
+import { useCartStore } from "@/store/cartStore";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isBsOpen, setIsBsOpen] = useState(false);
-  const [isMobileBsOpen, setIsMobileBsOpen] = useState(false);
   const [userName, setUserName] = useState<string>("");
   const [userFoto, setUserFoto] = useState<string>("");
 
@@ -27,10 +26,10 @@ export default function Header() {
   const bsRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Memanggil total item secara reaktif langsung dari useCartStoreBS
+  // Total item keranjang BS
   const totalBsItems = useCartStoreBS((state) => state.totalItems);
 
-  // Mengambil total item secara reaktif dari cartStore reguler
+  // Total item keranjang reguler
   const totalRegularItems = useCartStore((state: any) =>
     state.items
       ? state.items.reduce(
@@ -41,31 +40,14 @@ export default function Header() {
       : 0
   );
 
-  // Helper pembersih URL foto profil agar melewati jalur aman HTTPS (/uploads/)
-  const getSafeAvatarUrl = (foto: string | null | undefined) => {
-    if (!foto) return null;
-    if (foto.includes("/uploads/")) {
-      const fileName = foto.split("/uploads/").pop();
-      return `/uploads/${fileName}`;
-    }
-    if (foto.includes("/images/")) {
-      const fileName = foto.split("/images/").pop();
-      return `/images/${fileName}`;
-    }
-    if (foto.startsWith("http://") || foto.startsWith("https://")) {
-      return foto;
-    }
-    return `/uploads/${foto}`;
-  };
-
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
         const userObj = JSON.parse(storedUser);
         setUserName(userObj.name || userObj.nama || "User");
-        if (userObj.foto || userObj.avatar || userObj.gambar) {
-          setUserFoto(userObj.foto || userObj.avatar || userObj.gambar);
+        if (userObj.foto) {
+          setUserFoto(userObj.foto);
         }
       } catch (e) {
         console.error("Gagal parsing data user", e);
@@ -73,7 +55,7 @@ export default function Header() {
     }
   }, []);
 
-  // Menutup dropdown profile atau BS jika mengklik di luar area masing-masing
+  // Tutup dropdown jika klik di luar
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -90,16 +72,31 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Fungsi Logoff / Logout
+  // Sanitasi URL Avatar agar aman lewat proxy HTTPS
+  const getSafeAvatarUrl = (img: string | null | undefined) => {
+    if (!img) return null;
+    if (img.includes("/uploads/")) {
+      const fileName = img.split("/uploads/").pop();
+      return `/uploads/${fileName}`;
+    }
+    if (img.includes("/images/")) {
+      const fileName = img.split("/images/").pop();
+      return `/images/${fileName}`;
+    }
+    return `/uploads/${img}`;
+  };
+
+  const avatarSrc = getSafeAvatarUrl(userFoto);
+
   const handleLogout = async () => {
-    const API_URL =
+    const rawApiUrl =
       process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
+    const apiUrl = rawApiUrl.replace(/\/$/, "");
     const token = localStorage.getItem("token");
 
     try {
       if (token) {
-        const cleanApi = API_URL.replace(/\/$/, "");
-        await fetch(`${cleanApi}/logout`, {
+        await fetch(`${apiUrl}/logout`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -117,270 +114,162 @@ export default function Header() {
     }
   };
 
-  const avatarSrc = getSafeAvatarUrl(userFoto);
-
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link href="/" className="flex items-center">
-            <h1 className="text-base sm:text-xl md:text-2xl font-bold text-blue-600 truncate max-w-[190px] sm:max-w-none">
-              KOPERASI NIAGA ABADI RIDHOTULLAH
-            </h1>
-          </Link>
-
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-            <Link
-              href="/"
-              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
-            >
-              Home
+    <header className="bg-white shadow-xs sticky top-0 z-50 w-full">
+      {/* px-2.5 di HP agar tidak meluber keluar layar */}
+      <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-1">
+          
+          {/* SISI KIRI: JUDUL / LOGO */}
+          <div className="flex items-center min-w-0 shrink">
+            <Link href="/" className="flex items-center gap-1.5 truncate">
+              <span className="font-extrabold text-blue-600 text-xs sm:text-base md:text-lg tracking-tight truncate max-w-[130px] sm:max-w-none">
+                KOPERASI NIAGA ABADI
+              </span>
             </Link>
-
-            <Link
-              href="/products"
-              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
-            >
-              Produk
-            </Link>
-
-            <Link
-              href="/laporan/laporanpo"
-              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
-            >
-              Laporan
-            </Link>
-
-            <Link
-              href="/favorites/produkfavorites"
-              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
-            >
-              Favorite
-            </Link>
-
-            {/* Dropdown Menu BS */}
-            <div className="relative" ref={bsRef}>
-              <button
-                type="button"
-                onClick={() => setIsBsOpen(!isBsOpen)}
-                className="flex items-center gap-1 text-gray-700 hover:text-blue-600 font-medium text-sm focus:outline-none cursor-pointer transition"
-              >
-                <span>BS</span>
-                <FiChevronDown
-                  className={`w-4 h-4 transition-transform duration-200 ${
-                    isBsOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-
-              {isBsOpen && (
-                <div className="absolute left-0 mt-2 w-44 rounded-xl bg-white shadow-xl border border-gray-100 z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100">
-                  <Link
-                    href="/BS/halamanBS"
-                    onClick={() => setIsBsOpen(false)}
-                    className="block px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 transition"
-                  >
-                    Data BS
-                  </Link>
-                  <Link
-                    href="/laporan/laporanbs"
-                    onClick={() => setIsBsOpen(false)}
-                    className="block px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 transition"
-                  >
-                    Laporan BS
-                  </Link>
-                </div>
-              )}
-            </div>
-          </nav>
-
-          {/* Icons & Badges */}
-          <div className="flex items-center gap-3 sm:gap-6 ml-2 sm:ml-8">
-            {/* Badge 1: Keranjang Reguler */}
-            <Link
-              href="/cart"
-              className="relative p-1 text-gray-700 hover:text-blue-600 transition"
-              title="Keranjang Reguler"
-            >
-              <FiShoppingCart size={22} />
-              {totalRegularItems > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[10px] rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold shadow-sm">
-                  {totalRegularItems}
-                </span>
-              )}
-            </Link>
-
-            {/* Badge 2: Keranjang / Item BS */}
-            <Link
-              href="/keranjangbs"
-              className="relative p-1 text-gray-700 hover:text-blue-600 transition"
-              title="Keranjang BS"
-            >
-              <FiBox size={22} />
-              {totalBsItems > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold shadow-sm">
-                  {totalBsItems}
-                </span>
-              )}
-            </Link>
-
-            {/* Profile Dropdown Menu */}
-            <div className="relative" ref={profileRef}>
-              <button
-                type="button"
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="flex flex-col items-center justify-center focus:outline-none group cursor-pointer"
-              >
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex items-center justify-center shadow-sm">
-                  {avatarSrc ? (
-                    <img
-                      src={avatarSrc}
-                      alt={userName}
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        if (target.src.includes("/uploads/")) {
-                          target.src = target.src.replace(
-                            "/uploads/",
-                            "/images/"
-                          );
-                        }
-                      }}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <FiUser size={16} className="text-gray-600" />
-                  )}
-                </div>
-
-                <span className="mt-0.5 text-[9px] sm:text-[10px] font-medium text-gray-600 group-hover:text-blue-600 max-w-[65px] sm:max-w-[80px] truncate flex items-center gap-0.5">
-                  {userName ? userName : "Guest"}
-                  <FiChevronDown
-                    className={`w-2.5 h-2.5 transition-transform ${
-                      isProfileOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </span>
-              </button>
-
-              {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-xl border border-gray-100 z-50 divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-4 py-2.5">
-                    <p className="text-[10px] text-gray-400">Login sebagai</p>
-                    <p className="text-xs sm:text-sm font-bold text-gray-900 truncate">
-                      {userName || "Guest"}
-                    </p>
-                  </div>
-
-                  <div className="py-1">
-                    <Link
-                      href="/userprofile"
-                      onClick={() => setIsProfileOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 transition"
-                    >
-                      <FiUser className="w-3.5 h-3.5 text-gray-500" />
-                      <span>Profile</span>
-                    </Link>
-
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-xs sm:text-sm text-red-600 hover:bg-red-50 transition text-left cursor-pointer font-medium"
-                    >
-                      <FiLogOut className="w-3.5 h-3.5 text-red-600" />
-                      <span>Logoff</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Mobile Menu Hamburger Button */}
-          <button
-            type="button"
-            className="md:hidden ml-2.5 p-1 text-gray-700 hover:text-blue-600 focus:outline-none"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-          >
-            {isMenuOpen ? <FiX size={22} /> : <FiMenu size={22} />}
-          </button>
-        </div>
-
-        {/* Mobile Navigation Dropdown */}
-        {isMenuOpen && (
-          <nav className="md:hidden pb-3 pt-2 space-y-1 border-t border-gray-100 animate-in slide-in-from-top-2 duration-150">
+          {/* SISI KANAN: IKON AKSI (Rapat & Rapi di HP) */}
+          <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
+            {/* 1. Keranjang Reguler */}
             <Link
-              href="/"
-              onClick={() => setIsMenuOpen(false)}
-              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
+              href="/cart"
+              className="relative p-1.5 text-gray-700 hover:text-blue-600 transition-colors"
+              title="Keranjang Belanja"
             >
-              Home
-            </Link>
-            <Link
-              href="/products"
-              onClick={() => setIsMenuOpen(false)}
-              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
-            >
-              Produk
-            </Link>
-            <Link
-              href="/laporan/laporanpo"
-              onClick={() => setIsMenuOpen(false)}
-              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
-            >
-              Laporan
-            </Link>
-            <Link
-              href="/favorites/produkfavorites"
-              onClick={() => setIsMenuOpen(false)}
-              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
-            >
-              Favorite
+              <FiShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+              {totalRegularItems > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center ring-2 ring-white">
+                  {totalRegularItems > 99 ? "99+" : totalRegularItems}
+                </span>
+              )}
             </Link>
 
-            {/* Mobile Dropdown BS */}
-            <div>
+            {/* 2. Keranjang BS */}
+            <Link
+              href="/keranjangbs"
+              className="relative p-1.5 text-gray-700 hover:text-amber-600 transition-colors"
+              title="Keranjang BS"
+            >
+              <FiBox className="w-5 h-5 sm:w-6 sm:h-6" />
+              {totalBsItems > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center ring-2 ring-white">
+                  {totalBsItems > 99 ? "99+" : totalBsItems}
+                </span>
+              )}
+            </Link>
+
+            {/* 3. Profil User */}
+            <div className="relative" ref={profileRef}>
               <button
-                type="button"
-                onClick={() => setIsMobileBsOpen(!isMobileBsOpen)}
-                className="w-full flex items-center justify-between py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg focus:outline-none"
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="flex items-center gap-1 p-1 rounded-full hover:bg-gray-100 transition-colors"
               >
-                <span>BS</span>
-                <FiChevronDown
-                  className={`w-3.5 h-3.5 transition-transform ${
-                    isMobileBsOpen ? "rotate-180" : ""
-                  }`}
-                />
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt={userName}
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-1 ring-blue-500"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">
+                    {userName ? userName.charAt(0).toUpperCase() : <FiUser />}
+                  </div>
+                )}
+                {/* Di HP nama joksin disembunyikan agar hemat tempat */}
+                <span className="hidden sm:inline-block text-xs font-semibold text-gray-700 max-w-[80px] truncate">
+                  {userName}
+                </span>
+                <FiChevronDown className="hidden sm:inline-block w-3.5 h-3.5 text-gray-500" />
               </button>
-              {isMobileBsOpen && (
-                <div className="pl-3 space-y-1 py-1 bg-gray-50 rounded-lg mt-0.5">
+
+              {/* Dropdown Menu Profil */}
+              {isProfileOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-50">
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <p className="text-xs text-gray-500">Masuk sebagai</p>
+                    <p className="text-xs font-bold text-gray-800 truncate">
+                      {userName}
+                    </p>
+                  </div>
                   <Link
-                    href="/BS/halamanBS"
-                    onClick={() => {
-                      setIsMobileBsOpen(false);
-                      setIsMenuOpen(false);
-                    }}
-                    className="block py-1.5 px-2 text-xs text-gray-600 hover:text-blue-600 font-medium"
+                    href="/userprofile"
+                    onClick={() => setIsProfileOpen(false)}
+                    className="flex items-center gap-2 px-4 py-2 text-xs text-gray-700 hover:bg-gray-50"
                   >
-                    Data BS
+                    <FiUser className="w-3.5 h-3.5" />
+                    <span>Profil Saya</span>
                   </Link>
-                  <Link
-                    href="/laporan/laporanbs"
-                    onClick={() => {
-                      setIsMobileBsOpen(false);
-                      setIsMenuOpen(false);
-                    }}
-                    className="block py-1.5 px-2 text-xs text-gray-600 hover:text-blue-600 font-medium"
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-xs text-red-600 hover:bg-red-50 text-left"
                   >
-                    Laporan BS
-                  </Link>
+                    <FiLogOut className="w-3.5 h-3.5" />
+                    <span>Keluar (Logout)</span>
+                  </button>
                 </div>
               )}
             </div>
-          </nav>
-        )}
+
+            {/* 4. Tombol Menu Hamburger */}
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-1.5 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+              title="Menu Navigasi"
+            >
+              {isMenuOpen ? (
+                <FiX className="w-5 h-5 text-gray-700" />
+              ) : (
+                <FiMenu className="w-5 h-5 text-gray-700" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Menu Navigasi Mobile (Bila dibuka) */}
+      {isMenuOpen && (
+        <div className="bg-white border-t border-gray-100 px-4 py-3 space-y-2 shadow-md">
+          <Link
+            href="/"
+            onClick={() => setIsMenuOpen(false)}
+            className="block text-xs font-medium text-gray-700 hover:text-blue-600 py-1"
+          >
+            Beranda
+          </Link>
+          <Link
+            href="/products"
+            onClick={() => setIsMenuOpen(false)}
+            className="block text-xs font-medium text-gray-700 hover:text-blue-600 py-1"
+          >
+            Katalog Produk
+          </Link>
+          <Link
+            href="/BS/halamanBS"
+            onClick={() => setIsMenuOpen(false)}
+            className="block text-xs font-medium text-gray-700 hover:text-blue-600 py-1"
+          >
+            Input BS
+          </Link>
+          <Link
+            href="/laporan/omsetku"
+            onClick={() => setIsMenuOpen(false)}
+            className="block text-xs font-medium text-gray-700 hover:text-blue-600 py-1"
+          >
+            Cek Omset
+          </Link>
+          <Link
+            href="/laporan/laporanpo"
+            onClick={() => setIsMenuOpen(false)}
+            className="block text-xs font-medium text-gray-700 hover:text-blue-600 py-1"
+          >
+            Cek Orderanku
+          </Link>
+        </div>
+      )}
     </header>
   );
 }
