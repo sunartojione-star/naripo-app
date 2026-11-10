@@ -71,9 +71,8 @@ export default function LaporanPOPage() {
     ).replace(/\/$/, "");
 
     try {
-      const endpoint = baseUrl.endsWith("/api")
-        ? `${baseUrl}/po-note`
-        : `${baseUrl}/api/po-note`;
+     // SESUDAH (BENAR):
+const endpoint = `${baseUrl}/po-note`;
 
       const res = await fetch(`${endpoint}?kd_cus=${kdCus || ""}`, {
         headers: {
@@ -187,9 +186,7 @@ export default function LaporanPOPage() {
 
     if ((!orderItems || orderItems.length === 0) && noTran) {
       try {
-        const endpoint = baseUrl.endsWith("/api")
-          ? `${baseUrl}/po-note/${noTran}/details`
-          : `${baseUrl}/api/po-note/${noTran}/details`;
+        const endpoint = `${baseUrl}/po-note/${noTran}/details`;
 
         const res = await fetch(endpoint, {
           headers: {
