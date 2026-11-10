@@ -21,20 +21,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const getOrCreateDeviceId = () => {
-    if (typeof window === "undefined") return "web-device";
-    let devId = localStorage.getItem("device_id");
-    if (!devId) {
-      devId =
-        "device_" +
-        Math.random().toString(36).substring(2, 9) +
-        "_" +
-        Date.now();
-      localStorage.setItem("device_id", devId);
-    }
-    return devId;
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -45,8 +31,6 @@ export default function LoginPage() {
     const API_URL = rawApiUrl.replace(/\/$/, "");
 
     try {
-      const deviceId = getOrCreateDeviceId();
-
       const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: {
@@ -56,31 +40,31 @@ export default function LoginPage() {
         body: JSON.stringify({
           email: email.trim(),
           password: password,
-          device_id: deviceId,
+          device_id: "web-browser",
         }),
       });
 
-      // Parsing aman agar tidak crash jika server mengirim halaman error 500
       let data: any = null;
       try {
         data = await res.json();
       } catch (jsonErr) {
-        if (!res.ok) {
-          throw new Error("Email/username tidak terdaftar atau password salah. Periksa kembali ketikan Anda.");
-        }
+        // Jika server mengembalikan teks non-JSON
       }
 
       if (!res.ok || (data && data.success !== undefined && !data.success)) {
-        throw new Error(
-          data?.message || "Email/username tidak terdaftar atau password salah. Periksa kembali ketikan Anda."
-        );
+        // Ambil rincian pesan error langsung dari server Laravel
+        const serverError =
+          data?.message ||
+          (data?.errors ? Object.values(data.errors).flat().join(", ") : "") ||
+          "Login gagal. Periksa kembali email dan password Anda.";
+        throw new Error(serverError);
       }
 
       const token = data?.data?.token || data?.token;
       const user = data?.data?.user || data?.user || data?.data;
 
       if (!token) {
-        throw new Error("Email/username tidak terdaftar atau password salah.");
+        throw new Error("Token autentikasi tidak ditemukan dari server.");
       }
 
       localStorage.setItem("token", token);
@@ -95,7 +79,7 @@ export default function LoginPage() {
 
       router.push("/");
     } catch (err: any) {
-      setError(err.message || "Terjadi kesalahan saat masuk. Periksa kembali email dan password.");
+      setError(err.message || "Terjadi kesalahan pada server.");
     } finally {
       setLoading(false);
     }
@@ -143,18 +127,18 @@ export default function LoginPage() {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Username atau Email
+                  Email
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                     <FiUser className="w-4 h-4" />
                   </div>
                   <input
-                    type="text"
+                    type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="Masukkan username / email..."
+                    placeholder="contoh: sunarto@gmail.com"
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all"
                   />
                 </div>
