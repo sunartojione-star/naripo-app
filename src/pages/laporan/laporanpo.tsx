@@ -1,9 +1,7 @@
-"use client";
-
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Head from "next/head";
-import Link from "next/link";
+import Layout from "@/components/Layout";
 import {
   FiFileText,
   FiCalendar,
@@ -94,7 +92,7 @@ export default function LaporanPOPage() {
       // Filter berdasarkan user / kd_cus yang login
       if (Array.isArray(data) && kdCus) {
         data = data.filter(
-          (item: any) => String(item.kd_cus) === String(kdCus),
+          (item: any) => String(item.kd_cus) === String(kdCus)
         );
       }
 
@@ -112,7 +110,6 @@ export default function LaporanPOPage() {
     return reports.filter((item) => {
       const statusText = (item.status || "PROSES ORDER").trim().toUpperCase();
 
-      // Filter Status
       if (
         selectedStatus !== "ALL" &&
         statusText !== selectedStatus.toUpperCase()
@@ -120,7 +117,6 @@ export default function LaporanPOPage() {
         return false;
       }
 
-      // Filter Tanggal (Format tgl: YYYY-MM-DD atau ISO string)
       if (startDate || endDate) {
         const itemDateStr = item.tgl ? item.tgl.split("T")[0] : "";
         if (!itemDateStr) return false;
@@ -152,7 +148,7 @@ export default function LaporanPOPage() {
     setCurrentPage(1);
   };
 
-  // Helper untuk menentukan gaya warna badge status
+  // Helper Warna Status Badge
   const getStatusBadgeStyle = (statusRaw: string) => {
     const status = (statusRaw || "").trim().toUpperCase();
 
@@ -170,7 +166,6 @@ export default function LaporanPOPage() {
     }
   };
 
-  // --- FUNGSI PRINT PDF / CETAK ORDERAN ---
   // --- FUNGSI PRINT PDF / CETAK ORDERAN ---
   const handlePrintPDF = async (item: any) => {
     const noTran = item.no_tran || item.id;
@@ -190,7 +185,6 @@ export default function LaporanPOPage() {
       item.list ||
       [];
 
-    // Jika detail barang belum ada di object item, fetch menggunakan endpoint /po-note/{id}/details
     if ((!orderItems || orderItems.length === 0) && noTran) {
       try {
         const endpoint = baseUrl.endsWith("/api")
@@ -221,68 +215,24 @@ export default function LaporanPOPage() {
       }
     }
 
-    // Format HTML Dokumen Cetak / PDF
     const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
           <title>PO Note - ${noTran}</title>
           <style>
-            body {
-              font-family: Arial, sans-serif;
-              padding: 20px;
-              color: #333;
-            }
-            .header {
-              border-bottom: 2px solid #2563eb;
-              padding-bottom: 10px;
-              margin-bottom: 20px;
-            }
-            .header h2 {
-              margin: 0;
-              color: #1e40af;
-            }
-            .info-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 10px;
-              margin-bottom: 20px;
-              font-size: 14px;
-            }
-            .info-item span {
-              font-weight: bold;
-            }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 15px;
-            }
-            th, td {
-              border: 1px solid #ddd;
-              padding: 8px 10px;
-              text-align: left;
-              font-size: 13px;
-            }
-            th {
-              background-color: #f3f4f6;
-              font-weight: bold;
-            }
-            .text-right {
-              text-align: right;
-            }
-            .text-center {
-              text-align: center;
-            }
-            .total-row {
-              font-weight: bold;
-              background-color: #f9fafb;
-            }
-            .footer {
-              margin-top: 30px;
-              font-size: 12px;
-              color: #666;
-              text-align: center;
-            }
+            body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+            .header { border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; }
+            .header h2 { margin: 0; color: #1e40af; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; font-size: 14px; }
+            .info-item span { font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 13px; }
+            th { background-color: #f3f4f6; font-weight: bold; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .total-row { font-weight: bold; background-color: #f9fafb; }
+            .footer { margin-top: 30px; font-size: 12px; color: #666; text-align: center; }
           </style>
         </head>
         <body>
@@ -329,10 +279,10 @@ export default function LaporanPOPage() {
                             dt.subtotal ||
                               dt.total ||
                               dt.jumlah_harga ||
-                              (dt.QTY || dt.qty || 1) * (dt.harga || 0),
+                              (dt.QTY || dt.qty || 1) * (dt.harga || 0)
                           ).toLocaleString("id-ID")}</td>
                         </tr>
-                      `,
+                      `
                       )
                       .join("")
                   : `<tr><td colspan="6" style="text-align: center; color: #888;">Tidak ada rincian item barang.</td></tr>`
@@ -351,7 +301,6 @@ export default function LaporanPOPage() {
       </html>
     `;
 
-    // Buat iframe tersembunyi untuk proses print
     const printFrame = document.createElement("iframe");
     printFrame.style.position = "fixed";
     printFrame.style.right = "0";
@@ -381,67 +330,75 @@ export default function LaporanPOPage() {
   };
 
   return (
-    <>
+    <Layout>
       <Head>
         <title>Laporan PO Note - Naripo</title>
       </Head>
 
-      <div className="max-w-6xl mx-auto px-4 py-8 min-h-screen">
-        {/* Header Title */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <FiFileText className="text-blue-600" /> Laporan PO Note
-          </h1>
+      <div className="max-w-6xl mx-auto px-2.5 sm:px-4 py-4 sm:py-8 min-h-screen">
+        {/* Header Title Responsif */}
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+              <FiFileText className="w-5 h-5" />
+            </div>
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-800">
+              Laporan PO Note
+            </h1>
+          </div>
           <button
+            type="button"
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition"
+            className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-600 hover:text-blue-600 transition"
           >
-            <FiArrowLeft /> Kembali
+            <FiArrowLeft className="w-4 h-4" />
+            <span>Kembali</span>
           </button>
         </div>
 
-        {/* Panel Filter */}
-        <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-6">
-          <div className="flex items-center gap-2 font-semibold text-gray-700 mb-4 pb-2 border-b">
-            <FiFilter className="text-blue-600" /> Filter Laporan
+        {/* Panel Filter Responsif */}
+        <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-100 mb-4 sm:mb-6">
+          <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-gray-700 mb-3 pb-2 border-b border-gray-100">
+            <FiFilter className="text-blue-600 w-4 h-4" />
+            <span>Filter Laporan</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
             {/* Tanggal Mulai */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Tanggal Mulai
+              <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
+                Tanggal Mulai :
               </label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             {/* Tanggal Selesai */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Tanggal Selesai
+              <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
+                Tanggal Selesai :
               </label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             {/* Status Filter */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Status Pesanan
+              <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
+                Status Pesanan :
               </label>
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="PROSES ORDER">PROSES ORDER</option>
@@ -454,10 +411,12 @@ export default function LaporanPOPage() {
             {/* Tombol Reset */}
             <div>
               <button
+                type="button"
                 onClick={handleResetFilter}
-                className="w-full flex items-center justify-center gap-2 bg-gray-100 text-gray-700 text-sm font-semibold py-2 px-4 rounded-lg hover:bg-gray-200 transition"
+                className="w-full flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs sm:text-sm font-semibold py-2 px-3 rounded-lg transition active:scale-95"
               >
-                <FiRotateCcw /> Reset Filter
+                <FiRotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Filter</span>
               </button>
             </div>
           </div>
@@ -465,39 +424,40 @@ export default function LaporanPOPage() {
 
         {/* Content Table & List */}
         {loading ? (
-          <div className="bg-white rounded-xl p-8 text-center shadow-sm border border-gray-100">
-            <p className="text-gray-500 animate-pulse">
+          <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p className="text-gray-500 text-xs sm:text-sm">
               Memuat laporan PO Note Anda...
             </p>
           </div>
         ) : error ? (
-          <div className="bg-red-50 text-red-600 rounded-xl p-6 text-center border border-red-100">
-            <p>{error}</p>
+          <div className="bg-red-50 text-red-600 rounded-2xl p-6 text-center border border-red-100">
+            <p className="text-xs sm:text-sm mb-3">{error}</p>
             <button
               onClick={fetchLaporan}
-              className="mt-3 px-4 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition"
+              className="px-4 py-1.5 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 transition"
             >
               Coba Lagi
             </button>
           </div>
         ) : filteredReports.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center shadow-sm border border-gray-100">
-            <p className="text-gray-500 mb-4">
+          <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+            <p className="text-gray-500 text-xs sm:text-sm mb-3">
               Tidak ada data PO Note yang sesuai dengan filter.
             </p>
             {(startDate || endDate || selectedStatus !== "ALL") && (
               <button
                 onClick={handleResetFilter}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
+                className="inline-flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold hover:bg-blue-700 transition"
               >
-                <FiRotateCcw /> Reset Filter
+                <FiRotateCcw className="w-3.5 h-3.5" /> Reset Filter
               </button>
             )}
           </div>
         ) : (
           <>
             {/* List Data Laporan */}
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {paginatedReports.map((item: any, idx: number) => {
                 const totalPo = parseFloat(item.total_po || 0);
                 const noTran = item.no_tran || item.id;
@@ -506,70 +466,74 @@ export default function LaporanPOPage() {
                 return (
                   <div
                     key={noTran || idx}
-                    className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition"
+                    className="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-gray-100 hover:shadow-md transition"
                   >
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-3 mb-3">
+                    {/* Header Transaksi + Status & Print */}
+                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2.5 mb-2.5">
                       <div>
-                        <span className="text-xs font-mono text-gray-400">
+                        <span className="text-[10px] sm:text-xs font-mono text-gray-400 block">
                           No. Transaksi:
                         </span>
-                        <h3 className="font-bold text-gray-800 text-base">
+                        <h3 className="font-bold text-gray-800 text-sm sm:text-base leading-tight">
                           {noTran || `-`}
                         </h3>
                       </div>
 
-                      {/* Status & Tombol Print PDF */}
-                      <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
                         <span
-                          className={`text-xs px-3 py-1 rounded-full font-semibold ${getStatusBadgeStyle(
-                            item.status,
+                          className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-bold ${getStatusBadgeStyle(
+                            item.status
                           )}`}
                         >
                           {item.status || "PROSES ORDER"}
                         </span>
 
                         <button
+                          type="button"
                           onClick={() => handlePrintPDF(item)}
                           disabled={isPrinting}
-                          className="flex items-center gap-1.5 bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-3 py-1 rounded-md text-xs font-semibold transition disabled:opacity-50"
+                          className="flex items-center gap-1 bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition disabled:opacity-50 active:scale-95 shrink-0"
                         >
-                          <FiPrinter />
-                          {isPrinting ? "Mencetak..." : "PRINT PDF"}
+                          <FiPrinter className="w-3.5 h-3.5" />
+                          <span>{isPrinting ? "Mencetak..." : "PRINT PDF"}</span>
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    {/* Rincian Transaksi Responsif (2 Kolom di HP, 4 Kolom di PC) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 text-xs sm:text-sm">
                       <div>
-                        <p className="text-gray-500 text-xs flex items-center gap-1">
-                          <FiCalendar /> Tanggal PO
+                        <p className="text-gray-400 text-[10px] sm:text-xs flex items-center gap-1">
+                          <FiCalendar className="w-3 h-3 text-blue-500" /> Tanggal PO
                         </p>
-                        <p className="font-medium text-gray-800 mt-0.5">
+                        <p className="font-semibold text-gray-800 mt-0.5">
                           {item.tgl ? item.tgl.split("T")[0] : "-"}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-gray-500 text-xs flex items-center gap-1">
-                          <FiClock /> Tgl Kirim / Ket
+                        <p className="text-gray-400 text-[10px] sm:text-xs flex items-center gap-1">
+                          <FiClock className="w-3 h-3 text-amber-500" /> Tgl Kirim / Ket
                         </p>
-                        <p className="font-medium text-gray-800 mt-0.5">
+                        <p className="font-semibold text-gray-800 mt-0.5 truncate">
                           {item.ket || item.jam || "-"}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-gray-500 text-xs flex items-center gap-1">
-                          <FiUser /> Admin / Pemesan
+                        <p className="text-gray-400 text-[10px] sm:text-xs flex items-center gap-1">
+                          <FiUser className="w-3 h-3 text-purple-500" /> Admin / Pemesan
                         </p>
-                        <p className="font-medium text-gray-800 mt-0.5">
+                        <p className="font-semibold text-gray-800 mt-0.5 truncate">
                           {item.nama_adm || item.kpb || "-"}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-gray-500 text-xs">Total PO</p>
-                        <p className="font-bold text-blue-600 mt-0.5">
+                        <p className="text-gray-400 text-[10px] sm:text-xs">
+                          Total PO
+                        </p>
+                        <p className="font-extrabold text-blue-600 font-mono text-xs sm:text-sm mt-0.5">
                           Rp {totalPo.toLocaleString("id-ID")}
                         </p>
                       </div>
@@ -579,15 +543,15 @@ export default function LaporanPOPage() {
               })}
             </div>
 
-            {/* Panel Pagination & Metadata */}
-            <div className="bg-white rounded-xl p-4 mt-6 shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-              {/* Opsi Jumlah Data Per Halaman */}
-              <div className="flex items-center gap-2 text-sm text-gray-600">
+            {/* Panel Pagination Responsif */}
+            <div className="bg-white rounded-2xl p-3 sm:p-4 mt-5 shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+              {/* Opsi Jumlah Data */}
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                 <span>Tampilkan:</span>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                  className="border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="border border-gray-300 rounded px-2 py-1 text-xs sm:text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value={5}>5</option>
                   <option value={10}>10</option>
@@ -595,44 +559,46 @@ export default function LaporanPOPage() {
                   <option value={50}>50</option>
                 </select>
                 <span>
-                  data dari Total <strong>{filteredReports.length}</strong> data
+                  dari total <strong>{filteredReports.length}</strong> data
                 </span>
               </div>
 
-              {/* Tombol Halaman (Prev/Next/Numbers) */}
+              {/* Tombol Navigasi Halaman */}
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() =>
                     setCurrentPage((prev) => Math.max(prev - 1, 1))
                   }
                   disabled={currentPage === 1}
-                  className="p-2 border rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition"
+                  className="p-1.5 sm:p-2 border rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition"
                   title="Sebelumnya"
                 >
-                  <FiChevronLeft />
+                  <FiChevronLeft className="w-4 h-4" />
                 </button>
 
                 <div className="flex items-center px-2">
-                  <span className="text-sm font-semibold text-gray-700">
+                  <span className="text-xs sm:text-sm font-semibold text-gray-700">
                     Halaman {currentPage} dari {totalPages}
                   </span>
                 </div>
 
                 <button
+                  type="button"
                   onClick={() =>
                     setCurrentPage((prev) => Math.min(prev + 1, totalPages))
                   }
                   disabled={currentPage === totalPages}
-                  className="p-2 border rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition"
+                  className="p-1.5 sm:p-2 border rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition"
                   title="Selanjutnya"
                 >
-                  <FiChevronRight />
+                  <FiChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </>
         )}
       </div>
-    </>
+    </Layout>
   );
 }

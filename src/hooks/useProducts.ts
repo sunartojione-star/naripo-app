@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { productAPI } from "@/utils/laravelAPI";
+import api from "@/utils/api";
 import { Product } from "@/types";
 
 interface UseProductsReturn {
@@ -19,7 +19,8 @@ export function useProducts(params?: any): UseProductsReturn {
       setLoading(true);
       setError(null);
 
-      const response = await productAPI.getAll(params);
+      // Menggunakan instance api utama yang sudah dilengkapi interceptor token
+      const response = await api.get("/barangs", { params });
 
       // Handle Laravel API response structure
       const data = response.data || response;
@@ -60,7 +61,7 @@ export function useProductDetail(
         setLoading(true);
         setError(null);
 
-        const response = await productAPI.getById(productId);
+        const response = await api.get(`/barangs/${productId}`);
         const data = response.data || response;
         setProduct(data);
       } catch (err: any) {

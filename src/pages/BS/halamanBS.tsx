@@ -1,10 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import ProductCard, { Barang } from "@/components/BSCard";
-import { FiSearch, FiBox, FiFilter, FiGrid, FiTag } from "react-icons/fi";
+import {
+  FiSearch,
+  FiBox,
+  FiFilter,
+  FiGrid,
+  FiTag,
+  FiChevronLeft,
+  FiChevronRight,
+  FiX,
+} from "react-icons/fi";
 
 interface PaginationMeta {
   page: number;
@@ -16,7 +25,6 @@ interface PaginationMeta {
 export default function HalamanBS() {
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [products, setProducts] = useState<Barang[]>([]);
-  // Daftar merk bisa diisi manual di sini jika Anda memilikinya, atau dibiarkan kosong jika tidak pakai filter merk
   const [merkList] = useState<string[]>([]);
   const [favoriteKdBrs, setFavoriteKdBrs] = useState<Set<string>>(new Set());
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
@@ -39,12 +47,12 @@ export default function HalamanBS() {
   const apiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
 
-  // Pastikan komponen sudah termuat di browser (Mencegah Hydration Error)
+  // Pastikan komponen sudah termuat di browser
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Debounce pencarian agar tidak spam request ke server
+  // Debounce pencarian
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -54,7 +62,7 @@ export default function HalamanBS() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch daftar BS dari backend menggunakan endpoint bsss & bss/by-kd
+  // Fetch daftar BS dari backend
   useEffect(() => {
     if (!isMounted) return;
 
@@ -71,12 +79,12 @@ export default function HalamanBS() {
           ? `&merk=${encodeURIComponent(selectedMerk)}`
           : "";
 
-        // Endpoint utama menggunakan /bsss (sesuai rute Laravel)
         let endpoint = `${apiUrl}/bsss?page=${currentPage}&limit=20${searchParam}${merkParam}`;
 
-        // Jika menggunakan endpoint khusus by-kd berdasarkan merk
         if (selectedMerk) {
-          endpoint = `${apiUrl}/bss/by-kd?merk=${encodeURIComponent(selectedMerk)}&page=${currentPage}&limit=20${searchParam}`;
+          endpoint = `${apiUrl}/bss/by-kd?merk=${encodeURIComponent(
+            selectedMerk
+          )}&page=${currentPage}&limit=20${searchParam}`;
         }
 
         const resProducts = await fetch(endpoint, {
@@ -118,12 +126,11 @@ export default function HalamanBS() {
           });
         }
 
-        // Ambil data favorit jika token tersedia
         if (token) {
           const resFav = await fetch(`${apiUrl}/favorites`, {
             headers: {
               Accept: "application/json",
-              Authorization: `Bearer ${token}`,
+              Authorization: token ? `Bearer ${token}` : "",
             },
           });
 
@@ -132,8 +139,8 @@ export default function HalamanBS() {
             if (resultFav.success && Array.isArray(resultFav.data)) {
               const favSet = new Set<string>(
                 resultFav.data.map(
-                  (favItem: { kd_bs: string }) => favItem.kd_bs,
-                ),
+                  (favItem: { kd_bs: string }) => favItem.kd_bs
+                )
               );
               setFavoriteKdBrs(favSet);
             }
@@ -215,21 +222,23 @@ export default function HalamanBS() {
   return (
     <Layout>
       <main
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+        className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-3 sm:py-8"
         suppressHydrationWarning
       >
-        {/* Header Title & Search Bar */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4 border-b pb-6">
+        {/* Header Title & Kotak Pencarian */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-6 gap-2.5 border-b border-gray-200 pb-3 sm:pb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <FiBox className="text-blue-600" /> Daftar Data (BS)
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <FiBox className="text-blue-600 w-5 h-5 sm:w-6 sm:h-6" />
+              <span>Daftar Data (BS)</span>
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
               Menampilkan daftar BS dengan status Aktif.
             </p>
           </div>
 
-          <div className="relative w-full md:w-80">
+          {/* Kotak Pencarian */}
+          <div className="relative w-full sm:w-80">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
               <FiSearch className="w-4 h-4" />
             </span>
@@ -238,146 +247,166 @@ export default function HalamanBS() {
               value={searchQuery}
               onChange={handleSearchChange}
               placeholder="Cari nama, kd_bs, atau merk..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm"
+              className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              >
+                <FiX className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* CONTAINER KELOMPOK FILTER BERDASARKAN MERK (Hanya muncul jika merkList ada isinya) */}
+        {/* Filter Merk (Hanya jika ada data merk) */}
         {merkList.length > 0 && (
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-8 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex items-center gap-2 text-blue-600 font-semibold min-w-[150px]">
-                <FiFilter className="w-4 h-4" />
-                <span className="text-sm">Filter Merk :</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
+          <div className="bg-white p-2.5 sm:p-4 rounded-xl shadow-sm border border-gray-100 mb-3 sm:mb-6">
+            <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden py-0.5">
+              <span className="text-[11px] font-bold text-blue-600 shrink-0 mr-1 flex items-center gap-1">
+                <FiFilter className="w-3 h-3" /> Merk:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleFilterMerk("")}
+                className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition active:scale-95 ${
+                  selectedMerk === ""
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                <FiGrid className="w-3.5 h-3.5" />
+                <span>Semua</span>
+              </button>
+
+              {merkList.map((m, idx) => (
                 <button
-                  onClick={() => handleFilterMerk("")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                    selectedMerk === ""
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-200"
-                      : "bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200"
+                  key={idx}
+                  type="button"
+                  onClick={() => handleFilterMerk(m)}
+                  className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 transition active:scale-95 ${
+                    selectedMerk === m
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  <FiGrid className="w-4 h-4" /> Semua
+                  <FiTag className="w-3.5 h-3.5" />
+                  <span>{m}</span>
                 </button>
-
-                {merkList.map((m, idx) => {
-                  const isSelected = selectedMerk === m;
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => handleFilterMerk(m)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
-                        isSelected
-                          ? "bg-blue-600 text-white shadow-md shadow-blue-200"
-                          : "bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200"
-                      }`}
-                    >
-                      <FiTag className="w-4 h-4" />
-                      <span>{m}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Informasi Jumlah Halaman / Hasil */}
+        {/* Informasi Status Hasil */}
         {!loadingProducts && !errorProducts && (
-          <div className="flex justify-between items-center mb-6">
-            <span className="text-sm text-gray-500 font-medium">
-              Menampilkan Halaman {pagination.page} dari{" "}
-              {pagination.total_pages}{" "}
+          <div className="flex justify-between items-center mb-2.5 sm:mb-4 text-[10px] sm:text-xs text-gray-500 font-medium px-1">
+            <span>
+              Halaman {pagination.page} dari {pagination.total_pages}{" "}
               {pagination.total ? `(Total ${pagination.total} produk)` : ""}
             </span>
-            <span className="text-sm text-gray-500 font-medium">
-              20 Item per Halaman
-            </span>
+            <span>20 Item / Hal</span>
           </div>
         )}
 
-        {/* Konten Produk */}
+        {/* Konten Produk BS */}
         {loadingProducts ? (
           <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 sm:h-10 sm:w-10 border-b-2 border-blue-600"></div>
           </div>
         ) : errorProducts ? (
-          <div className="p-4 bg-red-50 text-red-600 rounded-md text-center">
+          <div className="p-4 bg-red-50 text-red-600 rounded-xl text-center text-xs sm:text-sm">
             {errorProducts}
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-lg shadow-sm border p-8">
-            <FiBox className="mx-auto h-12 w-12 text-gray-300 mb-3" />
-            <p className="text-gray-600 font-medium">BS tidak ditemukan.</p>
+          <div className="text-center py-16 bg-white rounded-2xl shadow-sm border p-6">
+            <FiBox className="mx-auto h-10 w-10 text-gray-300 mb-2" />
+            <p className="text-gray-500 text-xs sm:text-sm font-medium">
+              BS tidak ditemukan.
+            </p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-8">
+            {/* GRID 2 KOLOM DI HP (grid-cols-2), 3 DI TABLET, 4 DI PC */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6 mb-8">
               {products.map((product) => (
                 <ProductCard
                   key={product.kd_bs}
                   product={product}
-                  // isFavorite={favoriteKdBrs.has(product.kd_bs)}
                   isFavorite={favoriteKdBrs.has(String(product.kd_bs))}
                   onToggleFavorite={handleToggleFavorite}
                 />
               ))}
             </div>
 
-            {/* Pagination Controls */}
+            {/* Pagination Controls Responsif */}
             {pagination.total_pages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-6 border-t border-gray-200">
-                <button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="px-4 py-2 text-sm font-medium border rounded-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                  ← Sebelumnya
-                </button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-gray-200">
+                <span className="text-xs text-gray-500 order-2 sm:order-1">
+                  Halaman <strong>{currentPage}</strong> dari{" "}
+                  <strong>{pagination.total_pages}</strong>
+                </span>
 
-                <div className="flex gap-1">
-                  {Array.from(
-                    { length: pagination.total_pages },
-                    (_, i) => i + 1,
-                  )
-                    .filter(
-                      (p) =>
-                        p === 1 ||
-                        p === pagination.total_pages ||
-                        Math.abs(p - currentPage) <= 1,
+                <div className="flex items-center gap-1 order-1 sm:order-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 sm:p-2 text-xs font-semibold border rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                  >
+                    <FiChevronLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Sebelumnya</span>
+                  </button>
+
+                  <div className="flex gap-1">
+                    {Array.from(
+                      { length: pagination.total_pages },
+                      (_, i) => i + 1
                     )
-                    .map((p, idx, array) => {
-                      const showEllipsis = idx > 0 && p - array[idx - 1] > 1;
-                      return (
-                        <div key={p} className="flex items-center">
-                          {showEllipsis && (
-                            <span className="px-2 text-gray-400">...</span>
-                          )}
-                          <button
-                            onClick={() => handlePageChange(p)}
-                            className={`px-3.5 py-2 text-sm font-semibold rounded-md border transition ${
-                              currentPage === p
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300"
-                            }`}
-                          >
-                            {p}
-                          </button>
-                        </div>
-                      );
-                    })}
-                </div>
+                      .filter(
+                        (p) =>
+                          p === 1 ||
+                          p === pagination.total_pages ||
+                          Math.abs(p - currentPage) <= 1
+                      )
+                      .map((p, idx, array) => {
+                        const showEllipsis =
+                          idx > 0 && p - array[idx - 1] > 1;
+                        return (
+                          <div key={p} className="flex items-center">
+                            {showEllipsis && (
+                              <span className="px-1 text-gray-400 text-xs">
+                                ...
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handlePageChange(p)}
+                              className={`w-7 h-7 sm:w-8 sm:h-8 text-xs font-bold rounded-lg border transition ${
+                                currentPage === p
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                                  : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300"
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
 
-                <button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage >= pagination.total_pages}
-                  className="px-4 py-2 text-sm font-medium border rounded-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                  Selanjutnya →
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage >= pagination.total_pages}
+                    className="p-1.5 sm:p-2 text-xs font-semibold border rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                  >
+                    <span className="hidden sm:inline">Selanjutnya</span>
+                    <FiChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </>
