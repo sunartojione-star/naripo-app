@@ -1,23 +1,3 @@
-// /** @type {import('next').NextConfig} */
-// const nextConfig = {
-//   reactStrictMode: true,
-//   images: {
-//     domains: [
-//       'localhost',
-//       'via.placeholder.com',
-//       'api.example.com',
-//       'localhost:8081',
-//       '127.0.0.1:8081',
-//     ],
-//     unoptimized: process.env.NODE_ENV === 'development', // Disable optimization in dev
-//   },
-//   env: {
-//     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api',
-//   },
-// };
-
-// module.exports = nextConfig;
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -34,6 +14,11 @@ const nextConfig = {
         port: "8081",
       },
       {
+        protocol: "http",
+        hostname: "103.125.42.217",
+        port: "8081",
+      },
+      {
         protocol: "https",
         hostname: "via.placeholder.com",
       },
@@ -42,12 +27,17 @@ const nextConfig = {
         hostname: "api.example.com",
       },
     ],
-    unoptimized: process.env.NODE_ENV === "development",
+    unoptimized: true,
   },
-  env: {
-    NEXT_PUBLIC_API_URL:
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081/api",
+  // Proxy jembatan agar tidak diblokir browser (Mixed Content)
+  async rewrites() {
+    return [
+      {
+        source: "/api-backend/:path*",
+        destination: "http://103.125.42.217:8081/api/:path*",
+      },
+    ];
   },
 };
 
-module.exports = nextConfig; // Sesuaikan dengan module.exports = nextConfig;
+module.exports = nextConfig;
