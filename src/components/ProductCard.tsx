@@ -34,9 +34,25 @@ export default function ProductCard({
 
   const price = parseFloat(product.h_anggota) || 0;
 
-  // Konfigurasi URL Gambar dari Backend Laravel
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
+  // Fungsi pembersih URL Gambar agar lewat jalur aman HTTPS (Proxy)
+  const getSafeImageSrc = (img: string | null | undefined) => {
+    if (!img) return null;
+
+    // Jika gambar sudah memuat link lengkap dari backend, ambil nama filenya saja
+    if (img.includes("/uploads/")) {
+      const fileName = img.split("/uploads/").pop();
+      return `/uploads/${fileName}`;
+    }
+    if (img.includes("/images/")) {
+      const fileName = img.split("/images/").pop();
+      return `/images/${fileName}`;
+    }
+
+    // Default jika hanya berupa nama file biasa
+    return `/uploads/${img}`;
+  };
+
+  const imageSrc = getSafeImageSrc(product.gambar);
 
   // Click Handler Tombol Favorit
   const handleFavoriteClick = async (e: React.MouseEvent) => {
@@ -155,12 +171,19 @@ export default function ProductCard({
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition p-2.5 sm:p-4 flex flex-col justify-between relative group overflow-hidden">
       <div>
-        {/* Gambar Produk: Kotak Proporsional di HP (aspect-square), Normal di PC */}
+        {/* Gambar Produk: Menggunakan URL Aman HTTPS */}
         <div className="w-full aspect-square sm:aspect-auto sm:h-48 bg-gray-100 rounded-lg mb-2.5 sm:mb-4 flex items-center justify-center overflow-hidden relative border border-gray-100">
-          {product.gambar ? (
+          {imageSrc ? (
             <img
-              src={`${apiUrl}/images/${product.gambar}`}
+              src={imageSrc}
               alt={product.nama}
+              onError={(e) => {
+                // Cadangan otomatis jika gambar ternyata ada di folder /images/
+                const target = e.currentTarget;
+                if (target.src.includes("/uploads/")) {
+                  target.src = target.src.replace("/uploads/", "/images/");
+                }
+              }}
               className="object-cover h-full w-full group-hover:scale-105 transition-transform duration-200"
             />
           ) : (
@@ -217,7 +240,7 @@ export default function ProductCard({
         <div>{renderKetBadge(product.ket)}</div>
       </div>
 
-      {/* Bagian Harga & Tombol + Keranjang (Rapi di HP & PC) */}
+      {/* Bagian Harga & Tombol + Keranjang */}
       <div className="mt-3 pt-2 sm:pt-3 border-t border-gray-100 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] sm:text-xs text-gray-400 leading-none mb-0.5">
