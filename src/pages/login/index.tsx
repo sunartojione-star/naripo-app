@@ -116,7 +116,6 @@ export default function LoginPage() {
                   alt="Logo Niaga"
                   className="w-10 h-10 object-contain drop-shadow"
                   onError={(e) => {
-                    // Fallback jika logo belum ada
                     (e.target as HTMLElement).style.display = "none";
                   }}
                 />
