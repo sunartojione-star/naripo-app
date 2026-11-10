@@ -77,8 +77,9 @@ export default function HalamanOpname() {
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [showActionModal, setShowActionModal] = useState<boolean>(false);
 
-  const apiUrl =
+  const rawApiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
+  const apiUrl = rawApiUrl.replace(/\/$/, "");
 
   // Helper Format Angka Titik Rupiah Indonesia (Contoh: 615.000)
   const formatAngka = (val: number | string | undefined | null) => {
@@ -86,6 +87,17 @@ export default function HalamanOpname() {
     const num = typeof val === "string" ? parseFloat(val) : val;
     if (isNaN(num)) return "0";
     return Math.round(num).toLocaleString("id-ID");
+  };
+
+  // Fungsi Fokus Kembali ke Input Scan Barcode (Bekerja di PC & HP/Tablet)
+  const focusQuickInput = () => {
+    setTimeout(() => {
+      if (quickInputRef.current) {
+        quickInputRef.current.focus();
+        quickInputRef.current.select();
+        quickInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 50);
   };
 
   // Navigasi Keyboard Page Up & Page Down untuk Laptop
@@ -524,6 +536,7 @@ export default function HalamanOpname() {
     });
     setShowActionModal(false);
     setSelectedItemIndex(null);
+    focusQuickInput();
   };
 
   const handleQtyChange = (index: number, val: string) => {
@@ -615,6 +628,7 @@ export default function HalamanOpname() {
         generateInitialRows();
         setNoBuku("");
         setCatatan("-");
+        focusQuickInput();
       } else {
         alert(result.message || "Gagal menyimpan data opname.");
       }
@@ -634,7 +648,7 @@ export default function HalamanOpname() {
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 bg-slate-900 text-white rounded-xl shadow-2xl">
-        {/* Header Title Rapi */}
+        {/* Header Title */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-3 sm:mb-6 shadow-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex items-center gap-2.5">
@@ -822,7 +836,7 @@ export default function HalamanOpname() {
           )}
         </div>
 
-        {/* Tabel Grid Detail Opname (Format Titik & Pas di Layar HP) */}
+        {/* Tabel Grid Detail Opname */}
         <div
           ref={tableContainerRef}
           tabIndex={0}
@@ -910,7 +924,6 @@ export default function HalamanOpname() {
                     >
                       {item.satuan || "-"}
                     </td>
-                    {/* HPP Berformat Titik */}
                     <td
                       onClick={() =>
                         hasItem
@@ -934,25 +947,38 @@ export default function HalamanOpname() {
                         >
                           <FiMinus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                         </button>
-                        <input
-                          ref={(el) => {
-                            qtyInputRefs.current[index] = el;
+
+                        {/* FORM UNTUK DETEKSI TOMBOL "BERIKUTNYA" / "ENTER" DI KEYBOARD HP */}
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            focusQuickInput();
                           }}
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={4}
-                          value={item.qty}
+                          className="inline-block"
                           onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => handleQtyChange(index, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              quickInputRef.current?.focus();
-                            }
-                          }}
-                          className="w-7 sm:w-10 md:w-12 bg-slate-900 text-center text-white py-0.5 rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-[10px] sm:text-xs md:text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          placeholder="0"
-                        />
+                        >
+                          <input
+                            ref={(el) => {
+                              qtyInputRefs.current[index] = el;
+                            }}
+                            type="text"
+                            inputMode="numeric"
+                            enterKeyHint="done"
+                            maxLength={4}
+                            value={item.qty}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => handleQtyChange(index, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.keyCode === 13) {
+                                e.preventDefault();
+                                focusQuickInput();
+                              }
+                            }}
+                            className="w-7 sm:w-10 md:w-12 bg-slate-900 text-center text-white py-0.5 rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-[10px] sm:text-xs md:text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            placeholder="0"
+                          />
+                        </form>
+
                         <button
                           type="button"
                           onClick={(e) => {
@@ -966,7 +992,6 @@ export default function HalamanOpname() {
                         </button>
                       </div>
                     </td>
-                    {/* SUB TOTAL Berformat Titik */}
                     <td
                       onClick={() =>
                         hasItem
@@ -1068,7 +1093,6 @@ export default function HalamanOpname() {
         {showActionModal && currentSelectedItem && selectedItemIndex !== null && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
             <div className="bg-slate-800 border border-slate-600 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
-              {/* Header Modal */}
               <div className="p-4 bg-slate-700/80 border-b border-slate-600 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FiEdit2 className="text-blue-400 w-5 h-5" />
@@ -1084,9 +1108,7 @@ export default function HalamanOpname() {
                 </button>
               </div>
 
-              {/* Body Modal */}
               <div className="p-4 space-y-4">
-                {/* Info Barang Card */}
                 <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700">
                   <div className="flex items-center justify-between text-xs text-blue-400 font-mono mb-1">
                     <span>KODE: {currentSelectedItem.kd_br}</span>
@@ -1105,7 +1127,6 @@ export default function HalamanOpname() {
                   </div>
                 </div>
 
-                {/* Kontrol QTY Besar Nyaman di HP */}
                 <div className="bg-slate-900/60 p-3.5 rounded-xl border border-fuchsia-900/40">
                   <label className="block text-xs font-bold text-fuchsia-300 mb-2 text-center uppercase tracking-wider">
                     Jumlah Qty Opname
@@ -1118,16 +1139,33 @@ export default function HalamanOpname() {
                     >
                       <FiMinus className="w-5 h-5" />
                     </button>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={currentSelectedItem.qty}
-                      onChange={(e) =>
-                        handleQtyChange(selectedItemIndex, e.target.value)
-                      }
-                      className="w-24 h-12 bg-slate-950 text-center text-white rounded-xl border-2 border-fuchsia-600 focus:outline-none focus:border-white font-mono text-xl font-bold"
-                    />
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        setShowActionModal(false);
+                        focusQuickInput();
+                      }}
+                      className="inline-block"
+                    >
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        enterKeyHint="done"
+                        maxLength={4}
+                        value={currentSelectedItem.qty}
+                        onChange={(e) =>
+                          handleQtyChange(selectedItemIndex, e.target.value)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.keyCode === 13) {
+                            e.preventDefault();
+                            setShowActionModal(false);
+                            focusQuickInput();
+                          }
+                        }}
+                        className="w-24 h-12 bg-slate-950 text-center text-white rounded-xl border-2 border-fuchsia-600 focus:outline-none focus:border-white font-mono text-xl font-bold"
+                      />
+                    </form>
                     <button
                       type="button"
                       onClick={() => handleQtyAdjust(selectedItemIndex, 1)}
@@ -1146,7 +1184,6 @@ export default function HalamanOpname() {
                 </div>
               </div>
 
-              {/* Footer Tombol Aksi */}
               <div className="p-4 bg-slate-700/40 border-t border-slate-700 flex items-center gap-3">
                 <button
                   type="button"
@@ -1158,7 +1195,10 @@ export default function HalamanOpname() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowActionModal(false)}
+                  onClick={() => {
+                    setShowActionModal(false);
+                    focusQuickInput();
+                  }}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm shadow-md active:scale-95"
                 >
                   <FiCheckCircle className="w-4 h-4" />
