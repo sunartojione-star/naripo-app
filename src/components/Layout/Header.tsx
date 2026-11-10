@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import {
   FiMenu,
   FiX,
@@ -27,7 +27,7 @@ export default function Header() {
   const bsRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Memanggil total item secara reaktif langsung dari useCartStoreBS (menggunakan totalItems)
+  // Memanggil total item secara reaktif langsung dari useCartStoreBS
   const totalBsItems = useCartStoreBS((state) => state.totalItems);
 
   // Mengambil total item secara reaktif dari cartStore reguler
@@ -36,19 +36,36 @@ export default function Header() {
       ? state.items.reduce(
           (total: number, item: any) =>
             total + (item.quantity || item.qty || 1),
-          0,
+          0
         )
-      : 0,
+      : 0
   );
+
+  // Helper pembersih URL foto profil agar melewati jalur aman HTTPS (/uploads/)
+  const getSafeAvatarUrl = (foto: string | null | undefined) => {
+    if (!foto) return null;
+    if (foto.includes("/uploads/")) {
+      const fileName = foto.split("/uploads/").pop();
+      return `/uploads/${fileName}`;
+    }
+    if (foto.includes("/images/")) {
+      const fileName = foto.split("/images/").pop();
+      return `/images/${fileName}`;
+    }
+    if (foto.startsWith("http://") || foto.startsWith("https://")) {
+      return foto;
+    }
+    return `/uploads/${foto}`;
+  };
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
         const userObj = JSON.parse(storedUser);
-        setUserName(userObj.name || "User");
-        if (userObj.foto) {
-          setUserFoto(userObj.foto);
+        setUserName(userObj.name || userObj.nama || "User");
+        if (userObj.foto || userObj.avatar || userObj.gambar) {
+          setUserFoto(userObj.foto || userObj.avatar || userObj.gambar);
         }
       } catch (e) {
         console.error("Gagal parsing data user", e);
@@ -81,7 +98,8 @@ export default function Header() {
 
     try {
       if (token) {
-        await fetch(`${API_URL}/logout`, {
+        const cleanApi = API_URL.replace(/\/$/, "");
+        await fetch(`${cleanApi}/logout`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -99,40 +117,45 @@ export default function Header() {
     }
   };
 
+  const avatarSrc = getSafeAvatarUrl(userFoto);
+
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center">
-            <h1 className="text-xl sm:text-2xl font-bold text-blue-600 truncate max-w-[200px] sm:max-w-none">
+            <h1 className="text-base sm:text-xl md:text-2xl font-bold text-blue-600 truncate max-w-[190px] sm:max-w-none">
               KOPERASI NIAGA ABADI RIDHOTULLAH
             </h1>
           </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6 lg:gap-8">
-            <Link href="/" className="text-gray-700 hover:text-blue-600">
+            <Link
+              href="/"
+              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
+            >
               Home
             </Link>
 
             <Link
               href="/products"
-              className="text-gray-700 hover:text-blue-600"
+              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
             >
               Produk
             </Link>
 
             <Link
               href="/laporan/laporanpo"
-              className="text-gray-700 hover:text-blue-600"
+              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
             >
               Laporan
             </Link>
 
             <Link
               href="/favorites/produkfavorites"
-              className="text-gray-700 hover:text-blue-600"
+              className="text-gray-700 hover:text-blue-600 font-medium text-sm transition"
             >
               Favorite
             </Link>
@@ -140,29 +163,31 @@ export default function Header() {
             {/* Dropdown Menu BS */}
             <div className="relative" ref={bsRef}>
               <button
+                type="button"
                 onClick={() => setIsBsOpen(!isBsOpen)}
-                className="flex items-center gap-1 text-gray-700 hover:text-blue-600 focus:outline-none cursor-pointer"
+                className="flex items-center gap-1 text-gray-700 hover:text-blue-600 font-medium text-sm focus:outline-none cursor-pointer transition"
               >
                 <span>BS</span>
                 <FiChevronDown
-                  className={`w-4 h-4 transition-transform ${isBsOpen ? "rotate-180" : ""}`}
+                  className={`w-4 h-4 transition-transform duration-200 ${
+                    isBsOpen ? "rotate-180" : ""
+                  }`}
                 />
               </button>
 
               {isBsOpen && (
-                <div className="absolute left-0 mt-2 w-44 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50 py-1">
+                <div className="absolute left-0 mt-2 w-44 rounded-xl bg-white shadow-xl border border-gray-100 z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100">
                   <Link
                     href="/BS/halamanBS"
                     onClick={() => setIsBsOpen(false)}
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                    className="block px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 transition"
                   >
                     Data BS
                   </Link>
-                  {/* Input BS dihapus */}
                   <Link
                     href="/laporan/laporanbs"
                     onClick={() => setIsBsOpen(false)}
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                    className="block px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 transition"
                   >
                     Laporan BS
                   </Link>
@@ -172,30 +197,30 @@ export default function Header() {
           </nav>
 
           {/* Icons & Badges */}
-          <div className="flex items-center gap-4 sm:gap-6 ml-4 sm:ml-8">
+          <div className="flex items-center gap-3 sm:gap-6 ml-2 sm:ml-8">
             {/* Badge 1: Keranjang Reguler */}
-            <Link href="/cart" className="relative" title="Keranjang Reguler">
-              <FiShoppingCart
-                size={24}
-                className="text-gray-700 hover:text-blue-600"
-              />
+            <Link
+              href="/cart"
+              className="relative p-1 text-gray-700 hover:text-blue-600 transition"
+              title="Keranjang Reguler"
+            >
+              <FiShoppingCart size={22} />
               {totalRegularItems > 0 && (
-                <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                <span className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white text-[10px] rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold shadow-sm">
                   {totalRegularItems}
                 </span>
               )}
             </Link>
 
             {/* Badge 2: Keranjang / Item BS */}
-            <Link href="/keranjangbs" className="relative" title="Keranjang BS">
-              <div className="p-1 rounded-full hover:bg-gray-100 transition">
-                <FiBox
-                  size={24}
-                  className="text-gray-700 hover:text-blue-600"
-                />
-              </div>
+            <Link
+              href="/keranjangbs"
+              className="relative p-1 text-gray-700 hover:text-blue-600 transition"
+              title="Keranjang BS"
+            >
+              <FiBox size={22} />
               {totalBsItems > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center font-bold shadow-sm">
                   {totalBsItems}
                 </span>
               )}
@@ -204,37 +229,46 @@ export default function Header() {
             {/* Profile Dropdown Menu */}
             <div className="relative" ref={profileRef}>
               <button
+                type="button"
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
                 className="flex flex-col items-center justify-center focus:outline-none group cursor-pointer"
               >
-                <div className="w-7 h-7 rounded-full overflow-hidden bg-gray-200 border border-gray-300 flex items-center justify-center shadow-sm">
-                  {userFoto ? (
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex items-center justify-center shadow-sm">
+                  {avatarSrc ? (
                     <img
-                      src={userFoto}
+                      src={avatarSrc}
                       alt={userName}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (target.src.includes("/uploads/")) {
+                          target.src = target.src.replace(
+                            "/uploads/",
+                            "/images/"
+                          );
+                        }
+                      }}
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <FiUser
-                      size={18}
-                      className="text-gray-700 group-hover:text-blue-600"
-                    />
+                    <FiUser size={16} className="text-gray-600" />
                   )}
                 </div>
 
-                <span className="mt-0.5 text-[10px] font-medium text-gray-600 group-hover:text-blue-600 max-w-[80px] truncate flex items-center gap-0.5">
+                <span className="mt-0.5 text-[9px] sm:text-[10px] font-medium text-gray-600 group-hover:text-blue-600 max-w-[65px] sm:max-w-[80px] truncate flex items-center gap-0.5">
                   {userName ? userName : "Guest"}
                   <FiChevronDown
-                    className={`w-3 h-3 transition-transform ${isProfileOpen ? "rotate-180" : ""}`}
+                    className={`w-2.5 h-2.5 transition-transform ${
+                      isProfileOpen ? "rotate-180" : ""
+                    }`}
                   />
                 </span>
               </button>
 
               {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 z-50 divide-y divide-gray-100">
-                  <div className="px-4 py-3">
-                    <p className="text-xs text-gray-500">Login sebagai</p>
-                    <p className="text-sm font-semibold text-gray-900 truncate">
+                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-xl border border-gray-100 z-50 divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-4 py-2.5">
+                    <p className="text-[10px] text-gray-400">Login sebagai</p>
+                    <p className="text-xs sm:text-sm font-bold text-gray-900 truncate">
                       {userName || "Guest"}
                     </p>
                   </div>
@@ -243,17 +277,18 @@ export default function Header() {
                     <Link
                       href="/userprofile"
                       onClick={() => setIsProfileOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition"
+                      className="flex items-center gap-2 px-4 py-2 text-xs sm:text-sm text-gray-700 hover:bg-gray-50 transition"
                     >
-                      <FiUser className="w-4 h-4 text-gray-500" />
+                      <FiUser className="w-3.5 h-3.5 text-gray-500" />
                       <span>Profile</span>
                     </Link>
 
                     <button
+                      type="button"
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition text-left cursor-pointer"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-xs sm:text-sm text-red-600 hover:bg-red-50 transition text-left cursor-pointer font-medium"
                     >
-                      <FiLogOut className="w-4 h-4 text-red-600" />
+                      <FiLogOut className="w-3.5 h-3.5 text-red-600" />
                       <span>Logoff</span>
                     </button>
                   </div>
@@ -262,43 +297,44 @@ export default function Header() {
             </div>
           </div>
 
-          {/* Mobile Menu Button */}
+          {/* Mobile Menu Hamburger Button */}
           <button
-            className="md:hidden ml-4 cursor-pointer text-gray-700 hover:text-blue-600"
+            type="button"
+            className="md:hidden ml-2.5 p-1 text-gray-700 hover:text-blue-600 focus:outline-none"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            {isMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+            {isMenuOpen ? <FiX size={22} /> : <FiMenu size={22} />}
           </button>
         </div>
 
-        {/* Mobile Navigation */}
+        {/* Mobile Navigation Dropdown */}
         {isMenuOpen && (
-          <nav className="md:hidden pb-4 pt-2 space-y-2 border-t border-gray-100">
+          <nav className="md:hidden pb-3 pt-2 space-y-1 border-t border-gray-100 animate-in slide-in-from-top-2 duration-150">
             <Link
               href="/"
               onClick={() => setIsMenuOpen(false)}
-              className="block py-2 text-gray-700 hover:text-blue-600"
+              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
             >
               Home
             </Link>
             <Link
               href="/products"
               onClick={() => setIsMenuOpen(false)}
-              className="block py-2 text-gray-700 hover:text-blue-600"
+              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
             >
               Produk
             </Link>
             <Link
               href="/laporan/laporanpo"
               onClick={() => setIsMenuOpen(false)}
-              className="block py-2 text-gray-700 hover:text-blue-600"
+              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
             >
               Laporan
             </Link>
             <Link
               href="/favorites/produkfavorites"
               onClick={() => setIsMenuOpen(false)}
-              className="block py-2 text-gray-700 hover:text-blue-600"
+              className="block py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg"
             >
               Favorite
             </Link>
@@ -306,41 +342,38 @@ export default function Header() {
             {/* Mobile Dropdown BS */}
             <div>
               <button
+                type="button"
                 onClick={() => setIsMobileBsOpen(!isMobileBsOpen)}
-                className="w-full flex items-center justify-between py-2 text-gray-700 hover:text-blue-600 focus:outline-none"
+                className="w-full flex items-center justify-between py-2 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg focus:outline-none"
               >
                 <span>BS</span>
                 <FiChevronDown
-                  className={`w-4 h-4 transition-transform ${isMobileBsOpen ? "rotate-180" : ""}`}
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    isMobileBsOpen ? "rotate-180" : ""
+                  }`}
                 />
               </button>
               {isMobileBsOpen && (
-                <div className="pl-4 space-y-1 py-1 bg-gray-50 rounded-md mt-1">
+                <div className="pl-3 space-y-1 py-1 bg-gray-50 rounded-lg mt-0.5">
                   <Link
                     href="/BS/halamanBS"
                     onClick={() => {
                       setIsMobileBsOpen(false);
                       setIsMenuOpen(false);
                     }}
-                    className="block py-1.5 text-sm text-gray-600 hover:text-blue-600"
+                    className="block py-1.5 px-2 text-xs text-gray-600 hover:text-blue-600 font-medium"
                   >
                     Data BS
                   </Link>
-                  {/* Input BS pada mobile sudah dihapus */}
                   <Link
                     href="/laporan/laporanbs"
                     onClick={() => {
                       setIsMobileBsOpen(false);
                       setIsMenuOpen(false);
                     }}
-                    className="py-1.5 text-sm text-gray-600 hover:text-blue-600 flex items-center justify-between pr-4"
+                    className="block py-1.5 px-2 text-xs text-gray-600 hover:text-blue-600 font-medium"
                   >
-                    <span>Laporan BS</span>
-                    {totalBsItems > 0 && (
-                      <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                        {totalBsItems}
-                      </span>
-                    )}
+                    Laporan BS
                   </Link>
                 </div>
               )}
