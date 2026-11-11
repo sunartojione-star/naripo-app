@@ -15,7 +15,6 @@ import {
   FiPrinter,
   FiEye,
   FiX,
-  FiBox,
 } from "react-icons/fi";
 
 export default function LaporanPOPage() {
@@ -118,7 +117,7 @@ export default function LaporanPOPage() {
     setLoadingDetail(true);
     setDetailItems([]);
 
-    const noTran = po.no_tran || po.id;
+    const noTran = po.no_tran || po.kd_tran || po.id;
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     const baseUrl = (
@@ -209,7 +208,7 @@ export default function LaporanPOPage() {
 
   // --- FUNGSI PRINT PDF / CETAK ORDERAN ---
   const handlePrintPDF = async (item: any) => {
-    const noTran = item.no_tran || item.id;
+    const noTran = item.no_tran || item.kd_tran || item.id;
     setPrintingId(noTran);
 
     const token =
@@ -292,9 +291,9 @@ export default function LaporanPOPage() {
           <div class="info-grid">
             <div class="info-item"><span>No. Transaksi:</span> ${noTran || "-"}</div>
             <div class="info-item"><span>Status:</span> ${(item.status || "PROSES ORDER").toUpperCase()}</div>
-            <div class="info-item"><span>Tanggal PO:</span> ${item.tgl ? item.tgl.split("T")[0] : "-"}</div>
-            <div class="info-item"><span>Tgl Kirim / Ket:</span> ${item.ket || item.jam || "-"}</div>
-            <div class="info-item"><span>Pemesan / Admin:</span> ${item.nama_adm || item.kpb || item.pemesan || item.user || "-"}</div>
+            <div class="info-item"><span>Tanggal PO:</span> ${item.tgl ? item.tgl.split("T")[0] : "-"} ${item.jam || item.JAM ? `(${item.jam || item.JAM})` : ""}</div>
+            <div class="info-item"><span>Tgl Kirim / Ket:</span> ${item.ket || item.jam || item.tgl_kirim || "-"}</div>
+            <div class="info-item"><span>Pemesan / Admin:</span> ${item.nama_admin || item.NAMA_ADMIN || item.nama_adm || item.NAMA_ADM || item.pemesan || item.user || item.kpb || "-"}</div>
           </div>
 
           <h3>Detail Pesanan</h3>
@@ -501,11 +500,10 @@ export default function LaporanPOPage() {
             {/* List Data Laporan */}
             <div className="space-y-3 sm:space-y-4">
               {paginatedReports.map((item: any, idx: number) => {
-                // Membaca nilai total PO dari berbagai kemungkinan nama kolom
                 const totalPo = parseFloat(
                   item.total_po || item.total || item.TOTAL || item.grand_total || item.jumlah || item.nilai || 0
                 );
-                const noTran = item.no_tran || item.id;
+                const noTran = item.no_tran || item.kd_tran || item.id;
                 const isPrinting = printingId === noTran;
 
                 return (
@@ -563,6 +561,11 @@ export default function LaporanPOPage() {
                         </p>
                         <p className="font-semibold text-gray-800 mt-0.5">
                           {item.tgl ? item.tgl.split("T")[0] : "-"}
+                          {(item.jam || item.JAM) && (
+                            <span className="text-gray-500 text-[11px] font-mono ml-1">
+                              ({item.jam || item.JAM})
+                            </span>
+                          )}
                         </p>
                       </div>
 
@@ -580,7 +583,7 @@ export default function LaporanPOPage() {
                           <FiUser className="w-3 h-3 text-purple-500" /> Admin / Pemesan
                         </p>
                         <p className="font-semibold text-gray-800 mt-0.5 truncate">
-                          {item.nama_adm || item.kpb || item.pemesan || item.user || "-"}
+                          {item.nama_admin || item.NAMA_ADMIN || item.nama_adm || item.NAMA_ADM || item.pemesan || item.user || item.kpb || "-"}
                         </p>
                       </div>
 
@@ -660,7 +663,7 @@ export default function LaporanPOPage() {
               <div className="p-3.5 bg-slate-800 text-white flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-sm sm:text-base flex items-center gap-2">
-                    <span>PO #{selectedPo.no_tran || selectedPo.id}</span>
+                    <span>PO #{selectedPo.no_tran || selectedPo.kd_tran || selectedPo.id}</span>
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${getStatusBadgeStyle(
                         selectedPo.status
@@ -670,7 +673,7 @@ export default function LaporanPOPage() {
                     </span>
                   </h3>
                   <p className="text-[11px] text-slate-300 mt-0.5">
-                    Tgl PO: {selectedPo.tgl ? selectedPo.tgl.split("T")[0] : "-"} | {selectedPo.ket || `Kirim: ${selectedPo.tgl_kirim || "-"}`}
+                    Tgl PO: {selectedPo.tgl ? selectedPo.tgl.split("T")[0] : "-"} {(selectedPo.jam || selectedPo.JAM) ? `(${selectedPo.jam || selectedPo.JAM})` : ""} | {selectedPo.ket || `Kirim: ${selectedPo.tgl_kirim || "-"}`} | Admin: {selectedPo.nama_admin || selectedPo.NAMA_ADMIN || selectedPo.nama_adm || selectedPo.pemesan || selectedPo.user || "-"}
                   </p>
                 </div>
                 <button

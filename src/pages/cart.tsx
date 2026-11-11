@@ -196,21 +196,39 @@ export default function CartPage() {
     const activeKdCus = customerInfo.kd_cus || "A135";
 
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const now = new Date();
+      const today = now.toISOString().split("T")[0];
+      const jamSekarang = now.toLocaleTimeString("id-ID", { hour12: false });
+      const namaUserLogin = customerInfo.nama || customerInfo.user || "Sunarto";
       const roundedTotal = Math.round(subtotal);
 
-      // STEP 1: Simpan PO Note Header
-    const headerPayload = {
+      // STEP 1: Simpan PO Note Header (Lengkap dengan JAM dan NAMA ADMIN)
+      const headerPayload = {
+        // Tanggal PO
         tgl: today,
         TGL: today,
+
+        // Jam Pemesanan
+        jam: jamSekarang,
+        JAM: jamSekarang,
+
+        // Tanggal Kirim & Keterangan
         tgl_kirim: deliveryDate,
         TGL_KIRIM: deliveryDate,
         ket: deliveryDate ? `Kirim: ${deliveryDate}` : "dtg sendiri",
         KET: deliveryDate ? `Kirim: ${deliveryDate}` : "dtg sendiri",
+
+        // Kode Customer & Pelanggan
         kd_cus: String(activeKdCus).trim(),
         KD_CUS: String(activeKdCus).trim(),
+        nama_pelanggan: customerInfo.nama,
+        NAMA_PELANGGAN: customerInfo.nama,
+
+        // Status
         status: "PROSES PENGAMBILAN",
         STATUS: "PROSES PENGAMBILAN",
+
+        // Total Nominal PO
         total: roundedTotal,
         TOTAL: roundedTotal,
         jumlah: roundedTotal,
@@ -219,10 +237,26 @@ export default function CartPage() {
         NILAI: roundedTotal,
         rp_total: roundedTotal,
         RP_TOTAL: roundedTotal,
-        pemesan: customerInfo.nama || customerInfo.user || "ADMIN",
-        PEMESAN: customerInfo.nama || customerInfo.user || "ADMIN",
-        user: customerInfo.user || "ADMIN",
-        USER: customerInfo.user || "ADMIN",
+        nilai_po: roundedTotal,
+        NILAI_PO: roundedTotal,
+
+        // Nama Admin / Pemesan (User yang sedang login)
+        nama_admin: namaUserLogin,
+        NAMA_ADMIN: namaUserLogin,
+        nama_adm: namaUserLogin,
+        NAMA_ADM: namaUserLogin,
+        admin: namaUserLogin,
+        ADMIN: namaUserLogin,
+        pemesan: namaUserLogin,
+        PEMESAN: namaUserLogin,
+        user: namaUserLogin,
+        USER: namaUserLogin,
+        kpb: namaUserLogin,
+        KPB: namaUserLogin,
+
+        // Jenis
+        jenis: "ADMIN",
+        JENIS: "ADMIN",
       };
 
       const resHeader = await fetch(getEndpoint("po-note"), {
@@ -261,8 +295,8 @@ export default function CartPage() {
         throw new Error("Tidak ada barang valid di keranjang");
       }
 
-// STEP 3: Kirim semua barang sekaligus (menyertakan format huruf kecil & kapital)
- const bulkPayload = {
+      // STEP 3: Kirim semua barang sekaligus sesuai format DetailPoPLGController
+      const bulkPayload = {
         items: validItems.map((item: any, idx: number) => {
           const product = item.product || item;
           const price = parsePrice(product.h_anggota || product.price || product.hpp);
@@ -287,6 +321,7 @@ export default function CartPage() {
           };
         }),
       };
+
       console.log(`Mengirim seluruh ${validItems.length} item ke PO ${createdKdTran}...`, bulkPayload);
 
       const resDetail = await fetch(getEndpoint("detail-po-plg/bulk"), {

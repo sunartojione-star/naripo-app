@@ -215,28 +215,21 @@ export default function HalamanOpname() {
     } catch (e) {}
   };
 
-  // Logika Tambah Barang ke Keranjang & Otomatis Fokus ke Input QTY
+  // Logika Tambah Barang ke Baris Kosong Berikutnya (Tanpa Menggabung ke Atas)
   const addItemToKeranjang = (barang: Barang) => {
     let targetIndex = -1;
 
     setItems((prev) => {
       const updated = [...prev];
-      const existingIdx = updated.findIndex((it) => it.kd_br === barang.kd_br);
-      const hpp = typeof barang.h_anggota === "string" ? parseFloat(barang.h_anggota) : (barang.h_anggota || 0);
+      const hpp =
+        typeof barang.h_anggota === "string"
+          ? parseFloat(barang.h_anggota)
+          : (barang.h_anggota || 0);
 
-      if (existingIdx !== -1) {
-        targetIndex = existingIdx;
-        const cur = updated[existingIdx];
-        const newQty = (cur.qty || 0) + 1;
-        updated[existingIdx] = {
-          ...cur,
-          qty: newQty,
-          sub_total: cur.hpp * newQty,
-        };
-        return updated;
-      }
-
-      const emptyIdx = updated.findIndex((it) => !it.kd_br || it.kd_br.trim() === "");
+      // Selalu cari baris kosong pertama (tidak menggabungkan ke baris atas yang sudah ada)
+      const emptyIdx = updated.findIndex(
+        (it) => !it.kd_br || it.kd_br.trim() === ""
+      );
       targetIndex = emptyIdx !== -1 ? emptyIdx : updated.length;
 
       const newItem: DetailItem = {
@@ -261,7 +254,7 @@ export default function HalamanOpname() {
     setQuickResults([]);
     setShowQuickDropdown(false);
 
-    // Otomatis kursor lari ke kolom QTY
+    // Otomatis kursor fokus ke kolom QTY baris baru tersebut
     setTimeout(() => {
       if (targetIndex !== -1 && qtyInputRefs.current[targetIndex]) {
         const inputEl = qtyInputRefs.current[targetIndex];
@@ -450,7 +443,7 @@ export default function HalamanOpname() {
     }
   };
 
-  // Modal Pencarian Barang (Klik Baris Kosong)
+  // Modal Pencarian Barang (Ketika Klik Baris Kosong)
   const openSearchModal = (index: number) => {
     setActiveRowIndex(index);
     setShowSearchModal(true);
@@ -485,7 +478,10 @@ export default function HalamanOpname() {
   const handleSelectBarangModal = (barang: Barang) => {
     if (activeRowIndex === null) return;
     const targetIdx = activeRowIndex;
-    const hpp = typeof barang.h_anggota === "string" ? parseFloat(barang.h_anggota) : (barang.h_anggota || 0);
+    const hpp =
+      typeof barang.h_anggota === "string"
+        ? parseFloat(barang.h_anggota)
+        : (barang.h_anggota || 0);
 
     setItems((prev) => {
       const updated = [...prev];
@@ -673,7 +669,7 @@ export default function HalamanOpname() {
           </div>
         </div>
 
-        {/* Form Header (Uppercase Otomatis) */}
+        {/* Form Header */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-6 bg-slate-800 p-3 sm:p-5 rounded-xl border border-slate-700 mb-3 sm:mb-6 shadow-md">
           <div className="space-y-2.5 sm:space-y-4">
             <div className="flex items-center gap-2 sm:gap-4">
@@ -778,7 +774,6 @@ export default function HalamanOpname() {
               )}
             </div>
 
-            {/* Tombol Kamera Scan Barcode Khusus HP */}
             <button
               type="button"
               onClick={startCamera}
@@ -948,7 +943,6 @@ export default function HalamanOpname() {
                           <FiMinus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                         </button>
 
-                        {/* FORM UNTUK DETEKSI TOMBOL "BERIKUTNYA" / "ENTER" DI KEYBOARD HP */}
                         <form
                           onSubmit={(e) => {
                             e.preventDefault();
@@ -1146,6 +1140,7 @@ export default function HalamanOpname() {
                         focusQuickInput();
                       }}
                       className="inline-block"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <input
                         type="text"
@@ -1291,4 +1286,4 @@ export default function HalamanOpname() {
       </div>
     </Layout>
   );
-}
+}  
