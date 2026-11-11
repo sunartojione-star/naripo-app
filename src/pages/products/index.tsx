@@ -57,8 +57,9 @@ export default function ProductsPage() {
   });
 
   const router = useRouter();
-  const apiUrl =
+  const rawApiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
+  const apiUrl = rawApiUrl.replace(/\/$/, "");
 
   useEffect(() => {
     setIsMounted(true);
@@ -158,13 +159,23 @@ export default function ProductsPage() {
           )}&page=${currentPage}&limit=30${searchParam}${ketParam}`;
         }
 
-        const resProducts = await fetch(endpoint, {
+        let resProducts = await fetch(endpoint, {
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
             Authorization: token ? `Bearer ${token}` : "",
           },
         });
+
+        // Fallback jika server menolak token
+        if (!resProducts.ok && token) {
+          resProducts = await fetch(endpoint, {
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+          });
+        }
 
         if (!resProducts.ok) {
           throw new Error(`Server Error (${resProducts.status})`);
@@ -201,7 +212,7 @@ export default function ProductsPage() {
           const resFav = await fetch(`${apiUrl}/favorites`, {
             headers: {
               Accept: "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
+              Authorization: `Bearer ${token}`,
             },
           });
 
@@ -218,7 +229,7 @@ export default function ProductsPage() {
           }
         }
       } catch (err: any) {
-        console.error("Gagal mengambil data:", err);
+        console.error("Gagal mengambil data produk:", err);
         setErrorProducts(err?.message || "Gagal terhubung ke server.");
       } finally {
         setLoadingProducts(false);
@@ -234,6 +245,17 @@ export default function ProductsPage() {
     selectedKd,
     apiUrl,
   ]);
+
+  // Update data produk secara real-time saat Admin selesai mengedit foto/barcode
+  const handleProductUpdated = (updatedProduct: Barang) => {
+    setProducts((prev) =>
+      prev.map((item) =>
+        item.kd_br === updatedProduct.kd_br
+          ? { ...item, ...updatedProduct }
+          : item
+      )
+    );
+  };
 
   const handleToggleFavorite = async (product: Barang) => {
     const token = localStorage.getItem("token");
@@ -266,7 +288,7 @@ export default function ProductsPage() {
       if (response.ok && result.success) {
         setFavoriteKdBrs((prevSet) => {
           const newSet = new Set(prevSet);
-          if (result.data.is_favorite) {
+          if (result.data?.is_favorite) {
             newSet.add(product.kd_br);
           } else {
             newSet.delete(product.kd_br);
@@ -302,7 +324,6 @@ export default function ProductsPage() {
     setCurrentPage(1);
   };
 
-  // Reset semua filter
   const handleResetFilters = () => {
     setSelectedKet("");
     setSelectedKd("");
@@ -320,14 +341,13 @@ export default function ProductsPage() {
         className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-3 sm:py-6"
         suppressHydrationWarning
       >
-        {/* Header Title & Kotak Pencarian Ringkas */}
+        {/* Header Title & Kotak Pencarian */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-5 gap-2.5">
           <div className="flex items-center justify-between">
             <h1 className="text-lg sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
               <FiBox className="text-blue-600 w-5 h-5" />
               <span>Daftar Produk</span>
             </h1>
-            {/* Tombol Reset Cepat jika ada filter aktif */}
             {hasActiveFilter && (
               <button
                 type="button"
@@ -348,14 +368,14 @@ export default function ProductsPage() {
               value={searchQuery}
               onChange={handleSearchChange}
               placeholder="Cari nama, barcode, harga..."
-              className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm"
+              className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-xs"
             />
           </div>
         </div>
 
-        {/* BARIS FILTER SIMPLE (SWIPE / SCROLL HORIZONTAL DI HP, RAMPING & TIDAK MAKAN TEMPAT) */}
-        <div className="bg-white p-2.5 sm:p-3.5 rounded-xl shadow-sm border border-gray-100 mb-3.5 sm:mb-6 space-y-2">
-          {/* 1. Baris Filter Harga (Geser Samping) */}
+        {/* BARIS FILTER SWIPE HORIZONTAL DI HP */}
+        <div className="bg-white p-2.5 sm:p-3.5 rounded-xl shadow-xs border border-gray-100 mb-3.5 sm:mb-6 space-y-2">
+          {/* 1. Filter Status Harga */}
           <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden py-0.5">
             <span className="text-[11px] font-bold text-blue-600 shrink-0 mr-1 flex items-center gap-1">
               <FiFilter className="w-3 h-3" /> Harga:
@@ -375,7 +395,7 @@ export default function ProductsPage() {
                   onClick={() => handleFilterKet(item.value)}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold whitespace-nowrap shrink-0 transition active:scale-95 ${
                     isActive
-                      ? "bg-blue-600 text-white shadow-sm"
+                      ? "bg-blue-600 text-white shadow-xs"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
@@ -386,7 +406,7 @@ export default function ProductsPage() {
             })}
           </div>
 
-          {/* 2. Baris Filter Gudang (Geser Samping) */}
+          {/* 2. Filter Gudang / Kategori */}
           <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden py-0.5">
             <span className="text-[11px] font-bold text-emerald-600 shrink-0 mr-1 flex items-center gap-1">
               <FiLayers className="w-3 h-3" /> Gudang:
@@ -396,7 +416,7 @@ export default function ProductsPage() {
               onClick={() => handleFilterKd("")}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold whitespace-nowrap shrink-0 transition active:scale-95 ${
                 selectedKd === ""
-                  ? "bg-emerald-600 text-white shadow-sm"
+                  ? "bg-emerald-600 text-white shadow-xs"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
@@ -414,7 +434,7 @@ export default function ProductsPage() {
                   onClick={() => handleFilterKd(cleanKd)}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold whitespace-nowrap shrink-0 transition active:scale-95 ${
                     isSelected
-                      ? "bg-emerald-600 text-white shadow-sm"
+                      ? "bg-emerald-600 text-white shadow-xs"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
@@ -447,7 +467,7 @@ export default function ProductsPage() {
             {errorProducts}
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl shadow-sm border p-6">
+          <div className="text-center py-16 bg-white rounded-2xl shadow-xs border p-6">
             <FiBox className="mx-auto h-10 w-10 text-gray-300 mb-2" />
             <p className="text-gray-500 text-xs sm:text-sm font-medium">
               Produk tidak ditemukan.
@@ -455,19 +475,20 @@ export default function ProductsPage() {
           </div>
         ) : (
           <>
-            {/* GRID 2 KOLOM DI HP (grid-cols-2), 3 DI TABLET, 4 DI PC */}
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-6 mb-8">
+            {/* GRID 2 KOLOM DI HP, 3 DI TABLET, 4 DI PC */}
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 mb-8">
               {products.map((product) => (
                 <ProductCard
                   key={product.kd_br}
                   product={product}
                   isFavorite={favoriteKdBrs.has(product.kd_br)}
                   onToggleFavorite={handleToggleFavorite}
+                  onProductUpdated={handleProductUpdated} // Sinkronisasi otomatis saat Admin edit foto/barcode
                 />
               ))}
             </div>
 
-            {/* Pagination Controls Responsif */}
+            {/* Pagination Controls */}
             {pagination.total_pages > 1 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-gray-200">
                 <span className="text-xs text-gray-500 order-2 sm:order-1">
@@ -512,7 +533,7 @@ export default function ProductsPage() {
                               onClick={() => handlePageChange(p)}
                               className={`w-7 h-7 sm:w-8 sm:h-8 text-xs font-bold rounded-lg border transition ${
                                 currentPage === p
-                                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
                                   : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300"
                               }`}
                             >
