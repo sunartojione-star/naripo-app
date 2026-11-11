@@ -13,6 +13,9 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiPrinter,
+  FiEye,
+  FiX,
+  FiBox,
 } from "react-icons/fi";
 
 export default function LaporanPOPage() {
@@ -21,6 +24,12 @@ export default function LaporanPOPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [printingId, setPrintingId] = useState<string | number | null>(null);
+
+  // --- STATE POPUP MODAL DETAIL BARANG ---
+  const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
+  const [selectedPo, setSelectedPo] = useState<any>(null);
+  const [detailItems, setDetailItems] = useState<any[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
 
   // --- STATE FILTER ---
   const [startDate, setStartDate] = useState<string>("");
@@ -71,9 +80,7 @@ export default function LaporanPOPage() {
     ).replace(/\/$/, "");
 
     try {
-     // SESUDAH (BENAR):
-const endpoint = `${baseUrl}/po-note`;
-
+      const endpoint = `${baseUrl}/po-note`;
       const res = await fetch(`${endpoint}?kd_cus=${kdCus || ""}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -101,6 +108,41 @@ const endpoint = `${baseUrl}/po-note`;
       setError(err.message || "Terjadi kesalahan saat mengambil data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // --- FUNGSI BUKA POPUP RINCIAN BARANG ---
+  const handleOpenDetailModal = async (po: any) => {
+    setSelectedPo(po);
+    setShowDetailModal(true);
+    setLoadingDetail(true);
+    setDetailItems([]);
+
+    const noTran = po.no_tran || po.id;
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    const baseUrl = (
+      process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api"
+    ).replace(/\/$/, "");
+
+    try {
+      const endpoint = `${baseUrl}/detail-po-plg?no_tran=${noTran}`;
+      const res = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (res.ok) {
+        const detailResult = await res.json();
+        const data = detailResult?.data || detailResult || [];
+        setDetailItems(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error("Gagal mengambil detail barang:", err);
+    } finally {
+      setLoadingDetail(false);
     }
   };
 
@@ -186,8 +228,7 @@ const endpoint = `${baseUrl}/po-note`;
 
     if ((!orderItems || orderItems.length === 0) && noTran) {
       try {
-        const endpoint = `${baseUrl}/po-note/${noTran}/details`;
-
+        const endpoint = `${baseUrl}/detail-po-plg?no_tran=${noTran}`;
         const res = await fetch(endpoint, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -211,6 +252,14 @@ const endpoint = `${baseUrl}/po-note`;
         console.error("Gagal mengambil detail item untuk print:", e);
       }
     }
+
+    const grandTotalCalculated =
+      Array.isArray(orderItems) && orderItems.length > 0
+        ? orderItems.reduce((acc: number, it: any) => {
+            const sub = parseFloat(it.subtotal || it.total || (it.QTY || it.qty || 1) * (it.harga || 0));
+            return acc + (isNaN(sub) ? 0 : sub);
+          }, 0)
+        : parseFloat(item.total_po || item.total || item.TOTAL || 0);
 
     const printContent = `
       <!DOCTYPE html>
@@ -245,7 +294,7 @@ const endpoint = `${baseUrl}/po-note`;
             <div class="info-item"><span>Status:</span> ${(item.status || "PROSES ORDER").toUpperCase()}</div>
             <div class="info-item"><span>Tanggal PO:</span> ${item.tgl ? item.tgl.split("T")[0] : "-"}</div>
             <div class="info-item"><span>Tgl Kirim / Ket:</span> ${item.ket || item.jam || "-"}</div>
-            <div class="info-item"><span>Pemesan / Admin:</span> ${item.nama_adm || item.kpb || "-"}</div>
+            <div class="info-item"><span>Pemesan / Admin:</span> ${item.nama_adm || item.kpb || item.pemesan || item.user || "-"}</div>
           </div>
 
           <h3>Detail Pesanan</h3>
@@ -286,7 +335,7 @@ const endpoint = `${baseUrl}/po-note`;
               }
               <tr class="total-row">
                 <td colspan="5" class="text-right">GRAND TOTAL:</td>
-                <td class="text-right">Rp ${parseFloat(item.total_po || 0).toLocaleString("id-ID")}</td>
+                <td class="text-right">Rp ${grandTotalCalculated.toLocaleString("id-ID")}</td>
               </tr>
             </tbody>
           </table>
@@ -361,7 +410,6 @@ const endpoint = `${baseUrl}/po-note`;
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
-            {/* Tanggal Mulai */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
                 Tanggal Mulai :
@@ -374,7 +422,6 @@ const endpoint = `${baseUrl}/po-note`;
               />
             </div>
 
-            {/* Tanggal Selesai */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
                 Tanggal Selesai :
@@ -387,7 +434,6 @@ const endpoint = `${baseUrl}/po-note`;
               />
             </div>
 
-            {/* Status Filter */}
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
                 Status Pesanan :
@@ -405,7 +451,6 @@ const endpoint = `${baseUrl}/po-note`;
               </select>
             </div>
 
-            {/* Tombol Reset */}
             <div>
               <button
                 type="button"
@@ -456,24 +501,34 @@ const endpoint = `${baseUrl}/po-note`;
             {/* List Data Laporan */}
             <div className="space-y-3 sm:space-y-4">
               {paginatedReports.map((item: any, idx: number) => {
-                const totalPo = parseFloat(item.total_po || 0);
+                // Membaca nilai total PO dari berbagai kemungkinan nama kolom
+                const totalPo = parseFloat(
+                  item.total_po || item.total || item.TOTAL || item.grand_total || item.jumlah || item.nilai || 0
+                );
                 const noTran = item.no_tran || item.id;
                 const isPrinting = printingId === noTran;
 
                 return (
                   <div
                     key={noTran || idx}
-                    className="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-gray-100 hover:shadow-md transition"
+                    onClick={() => handleOpenDetailModal(item)}
+                    className="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-gray-100 hover:border-blue-300 hover:shadow-md transition cursor-pointer active:scale-[0.99] group"
+                    title="Klik kartu untuk melihat rincian barang"
                   >
                     {/* Header Transaksi + Status & Print */}
                     <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2.5 mb-2.5">
-                      <div>
-                        <span className="text-[10px] sm:text-xs font-mono text-gray-400 block">
-                          No. Transaksi:
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <span className="text-[10px] sm:text-xs font-mono text-gray-400 block">
+                            No. Transaksi:
+                          </span>
+                          <h3 className="font-bold text-gray-800 text-sm sm:text-base leading-tight group-hover:text-blue-600 transition">
+                            {noTran || `-`}
+                          </h3>
+                        </div>
+                        <span className="text-[10px] text-blue-500 bg-blue-50 px-2 py-0.5 rounded-md font-semibold hidden sm:inline-flex items-center gap-1">
+                          <FiEye className="w-3 h-3" /> Lihat Rincian
                         </span>
-                        <h3 className="font-bold text-gray-800 text-sm sm:text-base leading-tight">
-                          {noTran || `-`}
-                        </h3>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -487,7 +542,10 @@ const endpoint = `${baseUrl}/po-note`;
 
                         <button
                           type="button"
-                          onClick={() => handlePrintPDF(item)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Mencegah popup terbuka saat klik tombol print
+                            handlePrintPDF(item);
+                          }}
                           disabled={isPrinting}
                           className="flex items-center gap-1 bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold transition disabled:opacity-50 active:scale-95 shrink-0"
                         >
@@ -497,7 +555,7 @@ const endpoint = `${baseUrl}/po-note`;
                       </div>
                     </div>
 
-                    {/* Rincian Transaksi Responsif (2 Kolom di HP, 4 Kolom di PC) */}
+                    {/* Rincian Transaksi Responsif */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 text-xs sm:text-sm">
                       <div>
                         <p className="text-gray-400 text-[10px] sm:text-xs flex items-center gap-1">
@@ -513,7 +571,7 @@ const endpoint = `${baseUrl}/po-note`;
                           <FiClock className="w-3 h-3 text-amber-500" /> Tgl Kirim / Ket
                         </p>
                         <p className="font-semibold text-gray-800 mt-0.5 truncate">
-                          {item.ket || item.jam || "-"}
+                          {item.ket || item.jam || item.tgl_kirim || "-"}
                         </p>
                       </div>
 
@@ -522,7 +580,7 @@ const endpoint = `${baseUrl}/po-note`;
                           <FiUser className="w-3 h-3 text-purple-500" /> Admin / Pemesan
                         </p>
                         <p className="font-semibold text-gray-800 mt-0.5 truncate">
-                          {item.nama_adm || item.kpb || "-"}
+                          {item.nama_adm || item.kpb || item.pemesan || item.user || "-"}
                         </p>
                       </div>
 
@@ -542,7 +600,6 @@ const endpoint = `${baseUrl}/po-note`;
 
             {/* Panel Pagination Responsif */}
             <div className="bg-white rounded-2xl p-3 sm:p-4 mt-5 shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
-              {/* Opsi Jumlah Data */}
               <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                 <span>Tampilkan:</span>
                 <select
@@ -560,7 +617,6 @@ const endpoint = `${baseUrl}/po-note`;
                 </span>
               </div>
 
-              {/* Tombol Navigasi Halaman */}
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -594,6 +650,109 @@ const endpoint = `${baseUrl}/po-note`;
               </div>
             </div>
           </>
+        )}
+
+        {/* POPUP MODAL RINCIAN DETAIL BARANG PO */}
+        {showDetailModal && selectedPo && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2.5 sm:p-4 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+              {/* Header Modal */}
+              <div className="p-3.5 bg-slate-800 text-white flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base flex items-center gap-2">
+                    <span>PO #{selectedPo.no_tran || selectedPo.id}</span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${getStatusBadgeStyle(
+                        selectedPo.status
+                      )}`}
+                    >
+                      {selectedPo.status || "PROSES ORDER"}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    Tgl PO: {selectedPo.tgl ? selectedPo.tgl.split("T")[0] : "-"} | {selectedPo.ket || `Kirim: ${selectedPo.tgl_kirim || "-"}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDetailModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-slate-300 hover:text-white"
+                >
+                  <FiX className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Isi Tabel Barang */}
+              <div className="p-3 sm:p-4 flex-1 overflow-y-auto">
+                {loadingDetail ? (
+                  <div className="py-12 text-center text-slate-500 text-xs sm:text-sm">
+                    <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                    Memuat rincian barang...
+                  </div>
+                ) : detailItems.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    Tidak ada rincian item barang pada pesanan ini.
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                    <table className="w-full text-left text-[11px] sm:text-xs border-collapse">
+                      <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="p-2 text-center w-8">No</th>
+                          <th className="p-2">Nama Barang</th>
+                          <th className="p-2 text-center w-14">Qty</th>
+                          <th className="p-2 text-center w-14">Satuan</th>
+                          <th className="p-2 text-right w-20">Harga</th>
+                          <th className="p-2 text-right w-24">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {detailItems.map((det: any, i: number) => {
+                          const nama = det.nama_br || det.nama_brg || det.nama || det.KD_BR || "-";
+                          const qty = det.QTY || det.qty || det.jumlah || 1;
+                          const sat = det.SAT || det.satuan || "-";
+                          const hrg = parseFloat(det.harga || det.price || 0);
+                          const sub = parseFloat(
+                            det.subtotal || det.total || (qty * hrg)
+                          );
+
+                          return (
+                            <tr key={i} className="hover:bg-blue-50/40">
+                              <td className="p-2 text-center text-slate-400 font-mono">{i + 1}</td>
+                              <td className="p-2 font-medium text-slate-800">{nama}</td>
+                              <td className="p-2 text-center font-bold font-mono text-blue-700">{qty}</td>
+                              <td className="p-2 text-center text-slate-600 uppercase">{sat}</td>
+                              <td className="p-2 text-right font-mono text-slate-600">Rp {hrg.toLocaleString("id-ID")}</td>
+                              <td className="p-2 text-right font-mono font-bold text-slate-900">Rp {sub.toLocaleString("id-ID")}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Modal Ringkasan */}
+              <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs sm:text-sm">
+                <span className="text-slate-500 font-medium">
+                  Total: <b className="text-slate-800">{detailItems.length} barang</b>
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="font-extrabold text-blue-700 font-mono text-sm sm:text-base">
+                    Rp {detailItems.reduce((acc, it) => acc + parseFloat(it.subtotal || (it.QTY || it.qty || 1) * (it.harga || 0) || 0), 0).toLocaleString("id-ID")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailModal(false)}
+                    className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-bold text-xs active:scale-95 transition"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </Layout>

@@ -19,6 +19,56 @@ import {
 } from "react-icons/fi";
 import { useCartStore } from "@/store/cartStore";
 
+// Ekstraksi nomor transaksi kd_tran fleksibel
+function extractKdTran(res: any): string | number | null {
+  if (!res) return null;
+  if (typeof res === "number" || (typeof res === "string" && res.trim() !== "")) {
+    return res;
+  }
+  if (Array.isArray(res) && res.length > 0) {
+    return extractKdTran(res[0]);
+  }
+  if (typeof res === "object") {
+    const candidateKeys = [
+      "kd_tran",
+      "KD_TRAN",
+      "Kd_Tran",
+      "no_tran",
+      "NO_TRAN",
+      "kd_po",
+      "KD_PO",
+      "no_po",
+      "NO_PO",
+      "nomor",
+      "NOMOR",
+      "id",
+      "ID",
+    ];
+    for (const key of candidateKeys) {
+      if (res[key] !== undefined && res[key] !== null && res[key] !== "") {
+        return res[key];
+      }
+    }
+    if (res.data !== undefined && res.data !== null) {
+      const fromData = extractKdTran(res.data);
+      if (fromData) return fromData;
+    }
+    if (res.result !== undefined && res.result !== null) {
+      const fromResult = extractKdTran(res.result);
+      if (fromResult) return fromResult;
+    }
+    for (const key of Object.keys(res)) {
+      const lower = key.toLowerCase();
+      if ((lower.includes("tran") || lower.includes("po") || lower === "id") && res[key]) {
+        if (typeof res[key] === "string" || typeof res[key] === "number") {
+          return res[key];
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export default function CartPage() {
   const router = useRouter();
   const [deliveryDate, setDeliveryDate] = useState("");
@@ -108,14 +158,12 @@ export default function CartPage() {
     }, 0)
   );
 
-  // Buka Popup Modal saat deretan nama barang diklik
   const handleOpenEditModal = (item: any, index: number) => {
     setSelectedItem(item);
     setSelectedIdx(index);
     setShowEditModal(true);
   };
 
-  // Ubah Qty langsung dari input tabel
   const handleDirectQtyChange = (itemId: any, val: string) => {
     const cleaned = val.replace(/\D/g, "");
     const newQty = cleaned === "" ? 1 : Math.max(1, parseInt(cleaned, 10));
@@ -145,20 +193,36 @@ export default function CartPage() {
     }
 
     setLoading(true);
-    let activeKdCus = customerInfo.kd_cus || "A135";
-    let createdKdTran: number | null = null;
+    const activeKdCus = customerInfo.kd_cus || "A135";
 
     try {
       const today = new Date().toISOString().split("T")[0];
       const roundedTotal = Math.round(subtotal);
 
-      // STEP 1: Simpan PO Note
-      const headerPayload = {
+      // STEP 1: Simpan PO Note Header
+    const headerPayload = {
         tgl: today,
+        TGL: today,
         tgl_kirim: deliveryDate,
+        TGL_KIRIM: deliveryDate,
+        ket: deliveryDate ? `Kirim: ${deliveryDate}` : "dtg sendiri",
+        KET: deliveryDate ? `Kirim: ${deliveryDate}` : "dtg sendiri",
         kd_cus: String(activeKdCus).trim(),
+        KD_CUS: String(activeKdCus).trim(),
+        status: "PROSES PENGAMBILAN",
+        STATUS: "PROSES PENGAMBILAN",
         total: roundedTotal,
-        status: "Pending",
+        TOTAL: roundedTotal,
+        jumlah: roundedTotal,
+        JUMLAH: roundedTotal,
+        nilai: roundedTotal,
+        NILAI: roundedTotal,
+        rp_total: roundedTotal,
+        RP_TOTAL: roundedTotal,
+        pemesan: customerInfo.nama || customerInfo.user || "ADMIN",
+        PEMESAN: customerInfo.nama || customerInfo.user || "ADMIN",
+        user: customerInfo.user || "ADMIN",
+        USER: customerInfo.user || "ADMIN",
       };
 
       const resHeader = await fetch(getEndpoint("po-note"), {
@@ -172,30 +236,58 @@ export default function CartPage() {
       });
 
       const resultHeader = await resHeader.json();
-      if (!resHeader.ok || !resultHeader.success) {
+      console.log("Response PO Note:", resultHeader);
+
+      if (!resHeader.ok || (resultHeader.success !== undefined && !resultHeader.success)) {
         throw new Error(resultHeader.message || "Gagal membuat Header PO Note");
       }
 
-      createdKdTran = resultHeader.data?.kd_tran || resultHeader.data?.id;
+      const createdKdTran = extractKdTran(resultHeader);
+      if (!createdKdTran) {
+        throw new Error(
+          "Nomor transaksi (kd_tran) tidak ditemukan dari server: " + JSON.stringify(resultHeader)
+        );
+      }
 
-      // STEP 2: Simpan Bulk Detail
-      const bulkPayload = {
-        items: items.map((item: any, index: number) => {
+      // STEP 2: Filter item valid
+      const validItems = items.filter((item: any) => {
+        const product = item.product || item;
+        const kdBr = String(product.kd_br || product.kd || product.id || "").trim();
+        const qty = item.quantity || item.qty || 1;
+        return kdBr !== "" && qty > 0;
+      });
+
+      if (validItems.length === 0) {
+        throw new Error("Tidak ada barang valid di keranjang");
+      }
+
+// STEP 3: Kirim semua barang sekaligus (menyertakan format huruf kecil & kapital)
+ const bulkPayload = {
+        items: validItems.map((item: any, idx: number) => {
           const product = item.product || item;
           const price = parsePrice(product.h_anggota || product.price || product.hpp);
           const qty = item.quantity || item.qty || 1;
-          const kdBr = String(product.kd_br || product.kd || product.id || "");
+          const kdBr = String(product.kd_br || product.kd || product.id || "").trim();
+          const satuan = String(product.satuan || product.SAT || "DUS").trim();
+          const namaBr = String(product.nama || product.name || product.nama_br || "").trim();
+          const kd = String(product.kd || "").trim();
+          const lineSubtotal = Math.round(price * qty);
 
           return {
-            kd_tran: createdKdTran,
-            no_urut: index + 1,
-            kd_br: kdBr,
-            qty: qty,
+            no_tran: parseInt(String(createdKdTran), 10),
+            NO_URUT: idx + 1,
+            KD_BR: kdBr,
+            RASA: product.rasa || "-",
+            QTY: Math.round(qty),
+            SAT: satuan,
             harga: Math.round(price),
-            subtotal: Math.round(price * qty),
+            subtotal: lineSubtotal,
+            kd: kd,
+            nama_br: namaBr,
           };
         }),
       };
+      console.log(`Mengirim seluruh ${validItems.length} item ke PO ${createdKdTran}...`, bulkPayload);
 
       const resDetail = await fetch(getEndpoint("detail-po-plg/bulk"), {
         method: "POST",
@@ -208,7 +300,9 @@ export default function CartPage() {
       });
 
       const resultDetail = await resDetail.json();
-      if (!resDetail.ok || !resultDetail.success) {
+      console.log("Hasil simpan detail:", resultDetail);
+
+      if (!resDetail.ok || (resultDetail.success !== undefined && !resultDetail.success)) {
         throw new Error(resultDetail.message || "Gagal menyimpan rincian pesanan");
       }
 
@@ -216,6 +310,7 @@ export default function CartPage() {
       if (clearCart) clearCart();
       router.push("/laporan/laporanpo");
     } catch (err: any) {
+      console.error("Error order:", err);
       alert(`Gagal menyimpan: ${err.message || "Terjadi kesalahan koneksi"}`);
     } finally {
       setLoading(false);
@@ -229,13 +324,12 @@ export default function CartPage() {
       </Head>
 
       <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6 min-h-screen text-xs">
-        {/* MENU ATAS: TAB & TOMBOL KEMBALI KE DAFTAR PRODUK (GAMBAR NO 1) */}
+        {/* MENU ATAS */}
         <div className="flex items-center justify-between border-b border-slate-300 bg-slate-200 rounded-t-xl px-3 py-2 mb-3">
           <span className="font-bold text-blue-700 text-xs sm:text-sm">
             Keranjang Belanja
           </span>
 
-          {/* Tombol Kembali ke Daftar Produk */}
           <Link
             href="/products"
             className="inline-flex items-center gap-1.5 bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg font-bold border border-blue-200 shadow-xs text-xs active:scale-95 transition"
@@ -272,7 +366,6 @@ export default function CartPage() {
                 </div>
               </div>
 
-              {/* TOTAL HEADER */}
               <div className="md:col-span-5 bg-blue-50/60 p-3 rounded-xl border border-blue-100 flex flex-col justify-center">
                 <div className="flex justify-between items-center text-xs text-slate-600 mb-1">
                   <span>Total Kuantitas:</span>
@@ -285,7 +378,7 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* TABEL ITEM (KOLOM HAPUS SUDAH DIHILANGKAN, KLIK BARIS UNTUK POPUP) */}
+            {/* TABEL ITEM */}
             <div className="overflow-x-auto border border-slate-300 rounded-lg">
               <table className="w-full text-left border-collapse text-[11px] sm:text-xs">
                 <thead>
@@ -320,7 +413,6 @@ export default function CartPage() {
                           {idx + 1}
                         </td>
 
-                        {/* KLIK NAMA BARANG UNTUK MEMBUKA POPUP EDIT / HAPUS */}
                         <td
                           onClick={() => handleOpenEditModal(item, idx)}
                           className="p-2 border-r border-slate-200 font-semibold text-blue-900"
@@ -332,7 +424,6 @@ export default function CartPage() {
                           </div>
                         </td>
 
-                        {/* KOLOM JUMLAH: BISA LANGSUNG DIKETIK */}
                         <td className="p-1 border-r border-slate-200 text-center">
                           <div className="inline-flex items-center border border-slate-300 rounded bg-white shadow-xs">
                             <button
@@ -442,7 +533,7 @@ export default function CartPage() {
           </div>
         )}
 
-        {/* POPUP MODAL: EDIT QTY & HAPUS ITEM DARI KERANJANG */}
+        {/* MODAL EDIT / HAPUS */}
         {showEditModal && selectedItem && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -470,7 +561,6 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                {/* Kontrol QTY Modal */}
                 <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
                   <label className="block text-xs font-bold text-blue-900 mb-2">
                     Jumlah Pesanan
@@ -522,7 +612,6 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                {/* Footer Modal: Tombol Hapus & Selesai */}
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
