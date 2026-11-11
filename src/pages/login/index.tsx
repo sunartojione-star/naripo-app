@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
 
@@ -116,7 +116,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Divider & Tombol Daftar Baru */}
           <div className="mt-6 border-t border-gray-200 pt-4 text-center">
             <p className="text-sm text-gray-600 mb-3">Belum memiliki akun?</p>
             <Link
