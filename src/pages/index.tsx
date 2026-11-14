@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import ProductCard, { Barang } from "@/components/ProductCard";
+import ProductDetailModal from "@/components/ProductDetailModal";
 import {
   FiBox,
   FiArrowRight,
@@ -21,6 +22,7 @@ export default function Home() {
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
   const [errorProducts, setErrorProducts] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
+  const [selectedProduct, setSelectedProduct] = useState<Barang | null>(null);
 
   const router = useRouter();
   const rawApiUrl =
@@ -181,13 +183,10 @@ export default function Home() {
   return (
     <Layout>
       <div suppressHydrationWarning className="w-full">
-        {/* w-full dengan px-2 di HP agar konten MELEBAR PENUH ke tepi layar */}
         <div className="w-full max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-2 sm:py-6">
-          
           {/* 1. HERO BANNER PENUH */}
           <section className="w-full bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white rounded-xl p-3 sm:p-6 mb-4 sm:mb-8 shadow-sm relative overflow-hidden">
             <div className="w-full flex flex-col items-center relative z-10">
-              {/* Tombol Belanja Sekarang */}
               <div className="w-full sm:w-auto mb-2.5 sm:mb-4 flex justify-center">
                 <Link
                   href="/products"
@@ -198,7 +197,6 @@ export default function Home() {
                 </Link>
               </div>
 
-              {/* Grid Menu Aksi Cepat 2x2 */}
               <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-3">
                 <button
                   type="button"
@@ -277,7 +275,6 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              /* GRID PENUH: gap-2 di HP membuat kartu melebar maksimal */
               <div className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
                 {newProducts.map((product) => (
                   <ProductCard
@@ -285,6 +282,7 @@ export default function Home() {
                     product={product}
                     isFavorite={favoriteKdBrs.has(product.kd_br)}
                     onToggleFavorite={handleToggleFavorite}
+                    onSelectProduct={setSelectedProduct}
                   />
                 ))}
               </div>
@@ -292,6 +290,13 @@ export default function Home() {
           </section>
         </div>
       </div>
+
+      {/* Modal Detail Produk + Rekomendasi */}
+      <ProductDetailModal
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+        onSelectProduct={setSelectedProduct}
+      />
     </Layout>
   );
 }

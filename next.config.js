@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const backendUrl = process.env.BACKEND_URL || "https://naripo-pdaren.duckdns.org";
+
 const nextConfig = {
   reactStrictMode: true,
   images: {
@@ -8,15 +10,15 @@ const nextConfig = {
     return [
       {
         source: "/api-backend/:path*",
-        destination: "http://103.125.42.217:8081/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
       },
       {
         source: "/uploads/:path*",
-        destination: "http://103.125.42.217:8081/uploads/:path*",
+        destination: `${backendUrl}/uploads/:path*`,
       },
       {
         source: "/images/:path*",
-        destination: "http://103.125.42.217:8081/images/:path*",
+        destination: `${backendUrl}/images/:path*`,
       },
     ];
   },

@@ -15,6 +15,24 @@ import {
   FiPrinter,
 } from "react-icons/fi";
 
+const getDefaultDateRange = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return {
+    firstDay: `${year}-${month}-01`,
+    today: `${year}-${month}-${day}`,
+  };
+};
+
+const formatDisplayDate = (isoDate: string) => {
+  if (!isoDate) return "dd/mm/yyyy";
+  const parts = isoDate.split("-");
+  if (parts.length !== 3) return isoDate;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
 export default function LaporanBSPage() {
   const router = useRouter();
   const [reports, setReports] = useState<any[]>([]);
@@ -22,9 +40,10 @@ export default function LaporanBSPage() {
   const [error, setError] = useState<string | null>(null);
   const [printingId, setPrintingId] = useState<string | number | null>(null);
 
-  // --- STATE FILTER ---
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  // --- STATE FILTER (Default tanggal 1 bulan ini s/d hari ini) ---
+  const defaultRange = getDefaultDateRange();
+  const [startDate, setStartDate] = useState<string>(defaultRange.firstDay);
+  const [endDate, setEndDate] = useState<string>(defaultRange.today);
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
 
   // --- STATE PAGINATION ---
@@ -331,82 +350,106 @@ export default function LaporanBSPage() {
         <title>Laporan BS - Naripo</title>
       </Head>
 
-      <div className="max-w-6xl mx-auto px-2.5 sm:px-4 py-4 sm:py-8 min-h-screen">
-        {/* Header Title Responsif */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
+      <div className="max-w-6xl mx-auto px-2.5 sm:px-4 py-3 sm:py-6 min-h-screen">
+        {/* Header Title Ringkas */}
+        <div className="flex items-center justify-between mb-3 sm:mb-5">
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-              <FiFileText className="w-5 h-5" />
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+              <FiFileText className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <h1 className="text-lg sm:text-2xl font-bold text-gray-800">
+            <h1 className="text-base sm:text-xl font-bold text-gray-800">
               Laporan BS Pelanggan
             </h1>
           </div>
           <button
             type="button"
             onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-600 hover:text-blue-600 transition"
+            className="flex items-center gap-1 text-xs sm:text-sm font-semibold text-gray-600 hover:text-blue-600 bg-gray-100 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition"
           >
-            <FiArrowLeft className="w-4 h-4" />
+            <FiArrowLeft className="w-3.5 h-3.5" />
             <span>Kembali</span>
           </button>
         </div>
 
-        {/* Panel Filter Responsif */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-gray-100 mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-gray-700 mb-3 pb-2 border-b border-gray-100">
-            <FiFilter className="text-blue-600 w-4 h-4" />
+        {/* Panel Filter Ringkas (2 Kolom Tanggal DD/MM/YYYY + Status) */}
+        <div className="bg-white p-3 sm:p-4 rounded-2xl shadow-xs border border-gray-100 mb-3.5 sm:mb-5">
+          <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm text-gray-700 mb-2.5 pb-2 border-b border-gray-100">
+            <FiFilter className="text-blue-600 w-3.5 h-3.5" />
             <span>Filter Laporan BS</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
-            <div>
-              <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
-                Tanggal Mulai :
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          <div className="space-y-2.5">
+            {/* Tanggal Mulai & Selesai sejajar 2 kolom */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                  Tanggal Mulai
+                </label>
+                <div className="relative flex items-center w-full border border-gray-300 rounded-xl px-2.5 py-1.5 bg-white focus-within:ring-2 focus-within:ring-blue-500">
+                  <span
+                    className={`text-xs sm:text-sm font-medium ${
+                      startDate ? "text-gray-800" : "text-gray-400"
+                    }`}
+                  >
+                    {formatDisplayDate(startDate)}
+                  </span>
+                  <FiCalendar className="w-3.5 h-3.5 text-gray-400 ml-auto pointer-events-none" />
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                  Tanggal Selesai
+                </label>
+                <div className="relative flex items-center w-full border border-gray-300 rounded-xl px-2.5 py-1.5 bg-white focus-within:ring-2 focus-within:ring-blue-500">
+                  <span
+                    className={`text-xs sm:text-sm font-medium ${
+                      endDate ? "text-gray-800" : "text-gray-400"
+                    }`}
+                  >
+                    {formatDisplayDate(endDate)}
+                  </span>
+                  <FiCalendar className="w-3.5 h-3.5 text-gray-400 ml-auto pointer-events-none" />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
-                Tanggal Selesai :
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            {/* Status & Reset sejajar */}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="block text-[11px] font-semibold text-gray-600 mb-1">
+                  Status Cek
+                </label>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="w-full text-xs sm:text-sm border border-gray-300 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="Sudah DiCek">Sudah DiCek</option>
+                  <option value="Sudah DiPotong">Sudah DiPotong</option>
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-[11px] sm:text-xs font-semibold text-gray-600 mb-1">
-                Status Cek :
-              </label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full text-xs sm:text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="ALL">Semua Status</option>
-                <option value="Sudah DiCek">Sudah DiCek</option>
-                <option value="Sudah DiPotong">Sudah DiPotong</option>
-              </select>
-            </div>
-
-            <div>
               <button
                 type="button"
                 onClick={handleResetFilter}
-                className="w-full flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs sm:text-sm font-semibold py-2 px-3 rounded-lg transition active:scale-95"
+                className="flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs sm:text-sm font-semibold py-2 px-3.5 rounded-xl transition active:scale-95 shrink-0"
               >
                 <FiRotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Filter</span>
+                <span>Reset</span>
               </button>
             </div>
           </div>
@@ -414,7 +457,7 @@ export default function LaporanBSPage() {
 
         {/* Content Table & List */}
         {loading ? (
-          <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+          <div className="bg-white rounded-2xl p-8 text-center shadow-xs border border-gray-100">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
             <p className="text-gray-500 text-xs sm:text-sm">
               Memuat laporan BS Anda...
@@ -431,7 +474,7 @@ export default function LaporanBSPage() {
             </button>
           </div>
         ) : filteredReports.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+          <div className="bg-white rounded-2xl p-8 text-center shadow-xs border border-gray-100">
             <p className="text-gray-500 text-xs sm:text-sm mb-3">
               Tidak ada data laporan BS yang sesuai dengan filter.
             </p>
@@ -440,7 +483,7 @@ export default function LaporanBSPage() {
                 onClick={handleResetFilter}
                 className="inline-flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold hover:bg-blue-700 transition"
               >
-                <FiRotateCcw className="w-3.5 h-3.5" /> Reset Filter
+                <FiRotateCcw className="w-3.5 h-3.5" /> Tampilkan Semua
               </button>
             )}
           </div>
@@ -459,13 +502,13 @@ export default function LaporanBSPage() {
                 return (
                   <div
                     key={kdTran || idx}
-                    className="bg-white rounded-2xl p-3.5 sm:p-5 shadow-sm border border-gray-100 hover:shadow-md transition"
+                    className="bg-white rounded-2xl p-3.5 sm:p-5 shadow-xs border border-gray-100 hover:shadow-md transition"
                   >
                     {/* Header Transaksi + Status & Print */}
                     <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2.5 mb-2.5">
                       <div>
                         <span className="text-[10px] sm:text-xs font-mono text-gray-400 block">
-                          No. Transaksi (kd_tran):
+                          No. Transaksi:
                         </span>
                         <h3 className="font-bold text-gray-800 text-sm sm:text-base leading-tight">
                           {kdTran || `-`}
@@ -493,14 +536,14 @@ export default function LaporanBSPage() {
                       </div>
                     </div>
 
-                    {/* Rincian Transaksi Responsif (2 Kolom di HP, 4 Kolom di PC) */}
+                    {/* Rincian Transaksi Responsif */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4 text-xs sm:text-sm">
                       <div>
                         <p className="text-gray-400 text-[10px] sm:text-xs flex items-center gap-1">
                           <FiCalendar className="w-3 h-3 text-blue-500" /> Tanggal
                         </p>
                         <p className="font-semibold text-gray-800 mt-0.5">
-                          {item.tgl ? item.tgl.split("T")[0] : "-"}
+                          {item.tgl ? formatDisplayDate(item.tgl.split("T")[0]) : "-"}
                         </p>
                       </div>
 
@@ -537,7 +580,7 @@ export default function LaporanBSPage() {
             </div>
 
             {/* Panel Pagination Responsif */}
-            <div className="bg-white rounded-2xl p-3 sm:p-4 mt-5 shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="bg-white rounded-2xl p-3 sm:p-4 mt-5 shadow-xs border border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
               <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                 <span>Tampilkan:</span>
                 <select

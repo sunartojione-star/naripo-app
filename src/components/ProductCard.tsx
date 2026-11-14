@@ -30,6 +30,7 @@ interface ProductCardProps {
   isFavorite?: boolean;
   onToggleFavorite?: (product: Barang) => Promise<void>;
   onProductUpdated?: (updatedProduct: Barang) => void;
+  onSelectProduct?: (product: Barang) => void;
 }
 
 export default function ProductCard({
@@ -37,9 +38,14 @@ export default function ProductCard({
   isFavorite = false,
   onToggleFavorite,
   onProductUpdated,
+  onSelectProduct,
 }: ProductCardProps) {
   const [loadingFav, setLoadingFav] = useState<boolean>(false);
   const [isAdded, setIsAdded] = useState<boolean>(false);
+
+  // State Modal Input Qty Keranjang
+  const [showQtyModal, setShowQtyModal] = useState<boolean>(false);
+  const [qtyInput, setQtyInput] = useState<string>("1");
 
   // State Deteksi Hak Akses Admin
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -73,6 +79,7 @@ export default function ProductCard({
   );
 
   const price = parseFloat(product.h_anggota) || 0;
+  const parsedPreviewQty = Math.max(1, parseInt(qtyInput, 10) || 1);
 
   const rawApiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
@@ -86,7 +93,9 @@ export default function ProductCard({
         const u = JSON.parse(storedUser);
         const role = String(
           u.role || u.Hak || u.level_user || ""
-        ).trim().toLowerCase();
+        )
+          .trim()
+          .toLowerCase();
         if (
           role === "admin" ||
           role === "super admin" ||
@@ -172,27 +181,24 @@ export default function ProductCard({
     }
   };
 
-const capturePhoto = () => {
+  const capturePhoto = () => {
     if (!videoPhotoRef.current) return;
     const video = videoPhotoRef.current;
-    
-    // Pastikan video sudah memiliki resolusi yang valid
+
     const width = video.videoWidth || 640;
     const height = video.videoHeight || 640;
-    
+
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    
+
     if (ctx) {
       ctx.drawImage(video, 0, 0, width, height);
-      
-      // Ambil data gambar langsung dalam format DataURL
+
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
       setPreviewImage(dataUrl);
 
-      // Konversi DataURL menjadi File asli
       const arr = dataUrl.split(",");
       const bstr = atob(arr[1]);
       let n = bstr.length;
@@ -200,16 +206,15 @@ const capturePhoto = () => {
       while (n--) {
         u8arr[n] = bstr.charCodeAt(n);
       }
-      
+
       const cleanKd = String(product.kd_br).replace(/[^a-zA-Z0-9_-]/g, "_");
       const capturedFile = new File([u8arr], `${cleanKd}.jpg`, {
         type: "image/jpeg",
       });
-      
+
       setSelectedFile(capturedFile);
     }
-    
-    // Matikan kamera setelah foto berhasil diambil
+
     stopPhotoCamera();
   };
 
@@ -297,7 +302,6 @@ const capturePhoto = () => {
     }
   };
 
-  // Helper konversi File ke Base64 murni
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -311,7 +315,7 @@ const capturePhoto = () => {
     });
   };
 
-// 3. SIMPAN FOTO KE SERVER DAN UPDATE BARCODE KE DATABASE (HAPUS KD AGAR TIDAK ERROR BIGINT)
+  // 3. SIMPAN FOTO KE SERVER DAN UPDATE BARCODE KE DATABASE
   const handleSaveAdminData = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -325,7 +329,6 @@ const capturePhoto = () => {
     const filename = `${cleanKd}.jpg`;
 
     try {
-      // TAHAP 1: UPLOAD GAMBAR BASE64 JIKA ADA FOTO BARU
       if (selectedFile) {
         try {
           const base64Data = await fileToBase64(selectedFile);
@@ -345,7 +348,6 @@ const capturePhoto = () => {
         }
       }
 
-      // TAHAP 2: KIRIM FORM-DATA HANYA UNTUK BARCODE & FOTO (JANGAN KIRIM KD ATAU HPP)
       const formData = new FormData();
       formData.append("_method", "PUT");
       formData.append("barcode", editBarcode.trim());
@@ -380,8 +382,8 @@ const capturePhoto = () => {
         throw new Error(errorMsg);
       }
 
-     const savedImageName = selectedFile ? filename : currentGambar;
-setCurrentGambar(previewImage || savedImageName);
+      const savedImageName = selectedFile ? filename : currentGambar;
+      setCurrentGambar(previewImage || savedImageName);
       setCurrentBarcode(editBarcode);
 
       if (onProductUpdated) {
@@ -408,6 +410,7 @@ setCurrentGambar(previewImage || savedImageName);
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (loadingFav) return;
     setLoadingFav(true);
     if (onToggleFavorite) {
@@ -418,13 +421,33 @@ setCurrentGambar(previewImage || savedImageName);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    setQtyInput("1");
+    setShowQtyModal(true);
+  };
+
+  const handleConfirmAddToCart = (e: React.FormEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const parsedQty = Math.max(1, parseInt(qtyInput, 10) || 1);
     if (addToCart) {
       addToCart(
         { ...product, gambar: currentGambar, barcode: currentBarcode },
-        1
+        parsedQty
       );
       setIsAdded(true);
       setTimeout(() => setIsAdded(false), 800);
+    }
+    setShowQtyModal(false);
+  };
+
+  const handleOpenDetail = () => {
+    if (onSelectProduct) {
+      onSelectProduct({
+        ...product,
+        gambar: currentGambar,
+        barcode: currentBarcode,
+      });
     }
   };
 
@@ -459,12 +482,17 @@ setCurrentGambar(previewImage || savedImageName);
     <>
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs hover:shadow-md transition p-2 sm:p-3 flex flex-col justify-between relative group overflow-hidden w-full">
         <div>
-          {/* Gambar Produk */}
-          <div className="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden relative border border-gray-100">
+          {/* Gambar Produk (Klik untuk buka Detail Produk) */}
+          <div
+            onClick={handleOpenDetail}
+            className="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden relative border border-gray-100 cursor-pointer"
+          >
             {imageSrc ? (
               <img
                 src={imageSrc}
                 alt={product.nama}
+                loading="lazy"
+                decoding="async"
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (target.src.includes("/uploads/")) {
@@ -540,7 +568,8 @@ setCurrentGambar(previewImage || savedImageName);
           </div>
 
           <h3
-            className="font-bold text-gray-800 text-[11px] sm:text-xs uppercase leading-tight line-clamp-2 h-7 sm:h-8"
+            onClick={handleOpenDetail}
+            className="font-bold text-gray-800 text-[11px] sm:text-xs uppercase leading-tight line-clamp-2 h-7 sm:h-8 cursor-pointer hover:text-blue-700"
             title={product.nama}
           >
             {product.nama}
@@ -579,11 +608,107 @@ setCurrentGambar(previewImage || savedImageName);
         </div>
       </div>
 
+      {/* MODAL POPUP INPUT QTY KERANJANG */}
+      {showQtyModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowQtyModal(false);
+          }}
+        >
+          <form
+            onSubmit={handleConfirmAddToCart}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-xs p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="font-bold text-gray-800 text-sm leading-snug line-clamp-2">
+                  {product.nama}
+                </h4>
+                <p className="text-xs text-blue-600 font-semibold mt-1">
+                  Rp {price.toLocaleString("id-ID")} / {product.satuan || "DUS"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQtyModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg shrink-0"
+              >
+                <FiX className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setQtyInput((prev) =>
+                    String(Math.max(1, (parseInt(prev, 10) || 1) - 1))
+                  )
+                }
+                className="w-10 h-10 rounded-xl border border-gray-300 bg-gray-50 hover:bg-gray-100 text-lg font-bold text-gray-700 active:scale-95 transition"
+              >
+                -
+              </button>
+
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                autoFocus
+                value={qtyInput}
+                onChange={(e) => setQtyInput(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                className="w-20 h-10 rounded-xl border border-gray-300 text-center text-base font-bold text-gray-800 focus:border-blue-500 focus:outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  setQtyInput((prev) =>
+                    String((parseInt(prev, 10) || 0) + 1)
+                  )
+                }
+                className="w-10 h-10 rounded-xl border border-gray-300 bg-gray-50 hover:bg-gray-100 text-lg font-bold text-gray-700 active:scale-95 transition"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="bg-blue-50 rounded-xl px-3 py-2 flex items-center justify-between text-xs">
+              <span className="text-gray-600">Subtotal:</span>
+              <span className="font-extrabold text-blue-700 font-mono">
+                Rp {(price * parsedPreviewQty).toLocaleString("id-ID")}
+              </span>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowQtyModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs active:scale-95 transition"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition"
+              >
+                <FiShoppingCart className="w-3.5 h-3.5" />
+                <span>Masukkan</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* MODAL POPUP EDIT FOTO & BARCODE (KHUSUS ADMIN) */}
       {isEditModalOpen && isAdmin && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]">
-            
             {/* Header Modal */}
             <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
