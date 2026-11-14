@@ -1,6 +1,6 @@
 {
-  "name": "Niaga PD Aren",
-  "short_name": "Niaga PD Aren",
+  "name": "Niaga Bekasi",
+  "short_name": "Niaga Bekasi",
   "description": "Aplikasi Koperasi Niaga Abadi Ridhotullah",
   "start_url": "/",
   "display": "standalone",
@@ -15,7 +15,7 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/Logo _Niaga512x512.png",
+      "src": "/Logo_Niaga512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
