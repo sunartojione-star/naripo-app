@@ -36,6 +36,8 @@ const formatDDMMYYYY = (ymd: string) => {
 export default function LaporanPOPage() {
   const router = useRouter();
   const [reports, setReports] = useState<any[]>([]);
+  const [activeKdCus, setActiveKdCus] = useState<string>("");
+  const [activeCustomerName, setActiveCustomerName] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [printingId, setPrintingId] = useState<string | number | null>(null);
@@ -75,7 +77,6 @@ export default function LaporanPOPage() {
 
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
-    let kdCus = localStorage.getItem("kd_cus");
 
     if (!token) {
       alert("Anda belum login. Silakan login terlebih dahulu.");
@@ -83,16 +84,38 @@ export default function LaporanPOPage() {
       return;
     }
 
-    if (!kdCus) {
-      const savedUserStr = localStorage.getItem("user");
-      if (savedUserStr) {
-        try {
-          const savedUser = JSON.parse(savedUserStr);
-          kdCus = savedUser?.kd_cus || null;
-        } catch (e) {
-          console.error("Error parse user storage:", e);
+    let kdCus =
+      localStorage.getItem("kd_cus") || localStorage.getItem("kdCus") || "";
+
+    const savedUserStr = localStorage.getItem("user");
+    if (savedUserStr) {
+      try {
+        const savedUser = JSON.parse(savedUserStr);
+        setActiveCustomerName(
+          String(savedUser?.name || savedUser?.nama || "").trim()
+        );
+        if (!kdCus) {
+          kdCus =
+            savedUser?.kd_cus ||
+            savedUser?.KD_CUS ||
+            savedUser?.kode ||
+            savedUser?.username ||
+            "";
         }
+      } catch (e) {
+        console.error("Error parse user storage:", e);
       }
+    }
+
+    const cleanKdCus = String(kdCus).trim().toUpperCase();
+    setActiveKdCus(cleanKdCus);
+
+    // Jika kode pelanggan tidak ditemukan, jangan tampilkan data pelanggan lain
+    if (!cleanKdCus) {
+      setReports([]);
+      setError("Kode pelanggan tidak ditemukan. Silakan login ulang.");
+      setLoading(false);
+      return;
     }
 
     const baseUrl = (
@@ -101,12 +124,15 @@ export default function LaporanPOPage() {
 
     try {
       const endpoint = `${baseUrl}/po-note`;
-      const res = await fetch(`${endpoint}?kd_cus=${kdCus || ""}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      });
+      const res = await fetch(
+        `${endpoint}?kd_cus=${encodeURIComponent(cleanKdCus)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
 
       if (!res.ok) {
         throw new Error("Gagal mengambil data laporan PO Note");
@@ -115,10 +141,13 @@ export default function LaporanPOPage() {
       const result = await res.json();
       let data = result?.data || result || [];
 
-      if (Array.isArray(data) && kdCus) {
-        data = data.filter(
-          (item: any) => String(item.kd_cus) === String(kdCus)
-        );
+      if (Array.isArray(data)) {
+        data = data.filter((item: any) => {
+          const itemKd = String(item.kd_cus || item.KD_CUS || "")
+            .trim()
+            .toUpperCase();
+          return itemKd === cleanKdCus;
+        });
       }
 
       setReports(Array.isArray(data) ? data : []);
@@ -284,6 +313,13 @@ export default function LaporanPOPage() {
           }, 0)
         : parseFloat(item.total_po || item.total || item.TOTAL || 0);
 
+    const namaPelangganPrint =
+      item.nama_pelanggan ||
+      item.NAMA_PELANGGAN ||
+      item.customer_name ||
+      activeCustomerName ||
+      "-";
+
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -315,6 +351,7 @@ export default function LaporanPOPage() {
           <div class="info-grid">
             <div class="info-item"><span>No. Transaksi:</span> ${noTran || "-"}</div>
             <div class="info-item"><span>Status:</span> ${(item.status || "PROSES ORDER").toUpperCase()}</div>
+            <div class="info-item"><span>Pelanggan:</span> ${namaPelangganPrint} (${item.kd_cus || item.KD_CUS || activeKdCus || "-"})</div>
             <div class="info-item"><span>Tanggal PO:</span> ${item.tgl ? formatDDMMYYYY(item.tgl.split("T")[0]) : "-"} ${item.jam || item.JAM ? `(${item.jam || item.JAM})` : ""}</div>
             <div class="info-item"><span>Tgl Kirim / Ket:</span> ${item.ket || item.jam || item.tgl_kirim || "-"}</div>
             <div class="info-item"><span>Pemesan / Admin:</span> ${item.nama_admin || item.NAMA_ADMIN || item.nama_adm || item.NAMA_ADM || item.pemesan || item.user || item.kpb || "-"}</div>
@@ -418,7 +455,8 @@ export default function LaporanPOPage() {
                     Laporan PO Note
                   </h1>
                   <p className="text-[11px] text-blue-100">
-                    Riwayat pemesanan & cetak nota PO
+                    {activeCustomerName ? `${activeCustomerName} ` : ""}
+                    {activeKdCus ? `(${activeKdCus})` : "Riwayat pemesanan & cetak nota PO"}
                   </p>
                 </div>
               </div>
@@ -569,7 +607,7 @@ export default function LaporanPOPage() {
                       title="Klik kartu untuk melihat rincian barang"
                     >
                       {/* Header Transaksi + Status & Print */}
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 mb-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <div>
                             <span className="text-[10px] font-mono text-slate-400 block leading-none">
@@ -586,7 +624,7 @@ export default function LaporanPOPage() {
 
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span
-                            className={`text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 rounded-full font-bold ${getStatusBadgeStyle(
+                            className={`text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 rounded-full font-bold whitespace-nowrap ${getStatusBadgeStyle(
                               item.status
                             )}`}
                           >
@@ -606,6 +644,21 @@ export default function LaporanPOPage() {
                             <span>{isPrinting ? "..." : "PDF"}</span>
                           </button>
                         </div>
+                      </div>
+
+                      {/* Nama & Kode Pelanggan (1 Baris Rapi) */}
+                      <div className="flex items-center gap-1.5 text-[11px] sm:text-xs mb-2.5">
+                        <span className="text-slate-400 font-medium">Pelanggan:</span>
+                        <span className="font-bold text-slate-800 truncate">
+                          {item.nama_pelanggan ||
+                            item.NAMA_PELANGGAN ||
+                            item.customer_name ||
+                            activeCustomerName ||
+                            "-"}
+                        </span>
+                        <span className="font-mono text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded shrink-0">
+                          {item.kd_cus || item.KD_CUS || activeKdCus || "-"}
+                        </span>
                       </div>
 
                       {/* Rincian Transaksi */}
@@ -737,6 +790,15 @@ export default function LaporanPOPage() {
                       {selectedPo.status || "PROSES ORDER"}
                     </span>
                   </h3>
+                  <p className="text-[11px] font-semibold text-blue-200 mt-1">
+                    Pelanggan:{" "}
+                    {selectedPo.nama_pelanggan ||
+                      selectedPo.NAMA_PELANGGAN ||
+                      selectedPo.customer_name ||
+                      activeCustomerName ||
+                      "-"}{" "}
+                    ({selectedPo.kd_cus || selectedPo.KD_CUS || activeKdCus || "-"})
+                  </p>
                   <p className="text-[11px] text-slate-300 mt-0.5">
                     Tgl PO: {selectedPo.tgl ? formatDDMMYYYY(selectedPo.tgl.split("T")[0]) : "-"}{" "}
                     {selectedPo.jam || selectedPo.JAM
