@@ -24,6 +24,7 @@ export default function ProfilePage() {
     fotoUrl: "",
   });
 
+  const [initialKdCus, setInitialKdCus] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -47,6 +48,7 @@ export default function ProfilePage() {
           kd_cus: parsed.kd_cus || "",
           fotoUrl: parsed.foto || "",
         }));
+        setInitialKdCus(parsed.kd_cus || "");
         if (parsed.foto) {
           setPreviewImage(parsed.foto);
         }
@@ -84,7 +86,11 @@ export default function ProfilePage() {
       formData.append("name", user.name);
       formData.append("email", user.email);
       if (user.password) formData.append("password", user.password);
-      formData.append("kd_cus", user.kd_cus);
+
+      // Kirim kd_cus hanya jika berubah dari nilai awal
+      if (user.kd_cus && user.kd_cus !== initialKdCus) {
+        formData.append("kd_cus", user.kd_cus);
+      }
 
       // Kirim file dengan key "foto" sesuai kolom database
       if (user.foto instanceof File) {
@@ -95,28 +101,67 @@ export default function ProfilePage() {
       const API_URL =
         process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
 
-      const response = await fetch(`${API_URL}/update-profile`, {
-        method: "POST",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: formData,
-      });
+      const response = await fetch(
+        `${API_URL.replace(/\/+$/, "")}/update-profile`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: formData,
+        }
+      );
 
-      const result = await response.json();
+      const rawText = await response.text();
+      let result: any = null;
+      try {
+        result = JSON.parse(rawText);
+      } catch {
+        console.error(
+          "Respons bukan JSON:",
+          response.status,
+          rawText.slice(0, 300)
+        );
+        setMessage(
+          `Server mengembalikan non-JSON (HTTP ${response.status}). Cek endpoint /api/update-profile.`
+        );
+        return;
+      }
 
-      if (response.ok && result.success) {
+      if (response.ok && result?.success) {
+        const updatedUser = result.data?.user || result.data;
+
+        if (!updatedUser || typeof updatedUser !== "object") {
+          setMessage(
+            "Server berhasil merespons, tetapi data profil tidak ditemukan."
+          );
+          return;
+        }
+
         setMessage("Profil berhasil diperbarui di database!");
-        localStorage.setItem("user", JSON.stringify(result.data));
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setInitialKdCus(updatedUser.kd_cus || "");
         setUser((prev) => ({
           ...prev,
-          ...result.data,
+          ...updatedUser,
           password: "",
-          fotoUrl: result.data.foto || prev.fotoUrl,
+          foto: null,
+          fotoUrl: updatedUser.foto || prev.fotoUrl,
         }));
+        if (updatedUser.foto) {
+          setPreviewImage(updatedUser.foto);
+        }
         setIsEditing(false);
       } else {
-        setMessage(result.message || "Gagal memperbarui profil di server.");
+        const validationErrors = Object.values(result?.errors || {})
+          .flat()
+          .filter((error): error is string => typeof error === "string");
+        setMessage(
+          validationErrors.join(" ") ||
+            result?.message ||
+            `Gagal memperbarui profil (HTTP ${response.status}).`
+        );
       }
     } catch (error) {
       console.error("Error API:", error);
@@ -302,11 +347,7 @@ export default function ProfilePage() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none cursor-pointer"
                   >
-                    {showPassword ? (
-                      <FiEyeOff size={18} />
-                    ) : (
-                      <FiEye size={18} />
-                    )}
+                    {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
                   </button>
                 </div>
               </div>
