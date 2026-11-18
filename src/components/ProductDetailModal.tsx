@@ -12,6 +12,8 @@ import {
   FiTag,
   FiLayers,
   FiRefreshCw,
+  FiAlertTriangle,
+  FiX,
 } from "react-icons/fi";
 
 interface ProductDetailModalProps {
@@ -30,6 +32,7 @@ export default function ProductDetailModal({
 
   const [qtyInput, setQtyInput] = useState<string>("1");
   const [isAdded, setIsAdded] = useState<boolean>(false);
+  const [showDuplicatePopup, setShowDuplicatePopup] = useState<boolean>(false);
   const [recommendations, setRecommendations] = useState<Barang[]>([]);
   const [loadingRecs, setLoadingRecs] = useState<boolean>(false);
 
@@ -62,12 +65,13 @@ export default function ProductDetailModal({
     if (!product) return;
     setQtyInput("1");
     setIsAdded(false);
+    setShowDuplicatePopup(false);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [product]);
 
-  // Ambil rekomendasi produk sejenis (berdasarkan kd gudang/kategori)
+  // Ambil rekomendasi Produk Baru (ket = BARU)
   useEffect(() => {
     if (!product) return;
 
@@ -75,12 +79,7 @@ export default function ProductDetailModal({
       setLoadingRecs(true);
       const token = localStorage.getItem("token");
       try {
-        const kdClean = (product.kd || "").trim();
-        const endpoint = kdClean
-          ? `${apiUrl}/barangs/by-kd?kd=${encodeURIComponent(
-              kdClean
-            )}&page=1&limit=10`
-          : `${apiUrl}/barangs?status=Digunakan&page=1&limit=10`;
+        const endpoint = `${apiUrl}/barangs?ket=BARU&page=1&limit=10`;
 
         const res = await fetch(endpoint, {
           headers: {
@@ -103,7 +102,7 @@ export default function ProductDetailModal({
           setRecommendations([]);
         }
       } catch (err) {
-        console.error("Gagal memuat rekomendasi:", err);
+        console.error("Gagal memuat rekomendasi produk baru:", err);
         setRecommendations([]);
       } finally {
         setLoadingRecs(false);
@@ -129,7 +128,21 @@ export default function ProductDetailModal({
   const hargaNum = Number(product.h_anggota) || 0;
   const imgSrc = getImageUrl(product.gambar);
 
-  const handleAddToCart = () => {
+  const existingCartItem = Array.isArray(cartItems)
+    ? cartItems.find((item: any) => {
+        const p = item?.product || item;
+        return (
+          String(p?.kd_br || item?.kd_br || "").trim() ===
+          String(product.kd_br || "").trim()
+        );
+      })
+    : null;
+
+  const existingCartQty = existingCartItem
+    ? existingCartItem.quantity || existingCartItem.qty || 1
+    : 0;
+
+  const commitAddToCart = () => {
     if (typeof addToCart === "function") {
       addToCart({
         ...product,
@@ -147,8 +160,18 @@ export default function ProductDetailModal({
     setTimeout(() => setIsAdded(false), 1500);
   };
 
+  const handleAddToCart = () => {
+    if (existingCartItem) {
+      setShowDuplicatePopup(true);
+      return;
+    }
+    commitAddToCart();
+  };
+
   const handleBuyNow = () => {
-    handleAddToCart();
+    if (!existingCartItem) {
+      commitAddToCart();
+    }
     onClose();
     router.push("/cart");
   };
@@ -172,7 +195,7 @@ export default function ProductDetailModal({
       onClick={onClose}
     >
       <div
-        className="bg-white w-full sm:max-w-lg h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl"
+        className="relative bg-white w-full sm:max-w-lg h-[92dvh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl flex flex-col overflow-hidden shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* HEADER MODAL + ICON KERANJANG DENGAN BADGE ANGKA */}
@@ -273,14 +296,14 @@ export default function ProductDetailModal({
             </div>
           </div>
 
-          {/* Rekomendasi Produk Lainnya */}
+          {/* Rekomendasi Produk Baru */}
           <div className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs sm:text-sm font-bold text-gray-800">
                 Rekomendasi Produk Lainnya
               </h4>
-              <span className="text-[11px] text-gray-400">
-                Kategori {product.kd || "-"}
+              <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                Produk Baru
               </span>
             </div>
 
@@ -290,7 +313,7 @@ export default function ProductDetailModal({
               </div>
             ) : recommendations.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-4">
-                Belum ada rekomendasi produk lain.
+                Belum ada produk baru saat ini.
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-2.5">
@@ -301,8 +324,11 @@ export default function ProductDetailModal({
                       key={rec.kd_br}
                       type="button"
                       onClick={() => onSelectProduct(rec)}
-                      className="bg-white border border-gray-200/80 rounded-xl p-2 text-left hover:border-blue-400 transition active:scale-[0.98] flex flex-col"
+                      className="bg-white border border-gray-200/80 rounded-xl p-2 text-left hover:border-blue-400 transition active:scale-[0.98] flex flex-col relative"
                     >
+                      <span className="absolute top-2 left-2 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
+                        BARU
+                      </span>
                       <div className="w-full aspect-square bg-gray-50 rounded-lg overflow-hidden mb-2 flex items-center justify-center">
                         {recImg ? (
                           <img
@@ -395,6 +421,88 @@ export default function ProductDetailModal({
             )}
           </button>
         </div>
+
+        {/* POPUP PERINGATAN: BARANG WES NANG KERANJANG */}
+        {showDuplicatePopup && (
+          <div
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={() => setShowDuplicatePopup(false)}
+          >
+            <div
+              className="bg-white w-full max-w-xs sm:max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-amber-200 animate-in fade-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header Gradasi Kuning-Oranye */}
+              <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-4 py-4 text-center relative">
+                <button
+                  type="button"
+                  onClick={() => setShowDuplicatePopup(false)}
+                  className="absolute top-3 right-3 text-white/80 hover:text-white p-1 rounded-full hover:bg-white/15 transition"
+                >
+                  <FiX className="w-4 h-4" />
+                </button>
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center shadow-lg mb-2">
+                  <FiAlertTriangle className="w-8 h-8 text-white animate-bounce" />
+                </div>
+                <h3 className="text-base sm:text-lg font-extrabold text-white tracking-wide">
+                  Barang Wes Nang Keranjang!
+                </h3>
+              </div>
+
+              {/* Isi Info Barang */}
+              <div className="p-4 text-center space-y-3">
+                <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3">
+                  <p className="text-xs font-bold text-gray-800 line-clamp-2 leading-snug">
+                    {product.nama}
+                  </p>
+                  <div className="mt-1.5 inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-full border border-amber-200 text-[11px] font-semibold text-amber-700">
+                    <FiShoppingCart className="w-3.5 h-3.5" />
+                    <span>
+                      Sudah ada di keranjang (Qty: {existingCartQty})
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  Barang ini sudah masuk keranjang Anda. Mau lihat keranjang atau tetap tambah jumlahnya?
+                </p>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDuplicatePopup(false);
+                      commitAddToCart();
+                    }}
+                    className="py-2.5 px-3 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-50 active:scale-95 transition"
+                  >
+                    Tetap Tambah (+{parsedQty})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDuplicatePopup(false);
+                      onClose();
+                      router.push("/cart");
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-1.5"
+                  >
+                    <FiShoppingCart className="w-3.5 h-3.5" />
+                    Lihat Keranjang
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDuplicatePopup(false)}
+                  className="w-full py-2 text-[11px] font-semibold text-gray-400 hover:text-gray-600 transition"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

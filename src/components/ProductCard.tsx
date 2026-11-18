@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/router";
 import { useCartStore } from "@/store/cartStore";
 import {
   FiHeart,
@@ -11,6 +12,7 @@ import {
   FiSave,
   FiMaximize,
   FiFolder,
+  FiAlertTriangle,
 } from "react-icons/fi";
 
 export interface Barang {
@@ -40,11 +42,13 @@ export default function ProductCard({
   onProductUpdated,
   onSelectProduct,
 }: ProductCardProps) {
+  const router = useRouter();
   const [loadingFav, setLoadingFav] = useState<boolean>(false);
   const [isAdded, setIsAdded] = useState<boolean>(false);
 
-  // State Modal Input Qty Keranjang
+  // State Modal Input Qty Keranjang & Popup Peringatan Duplikat
   const [showQtyModal, setShowQtyModal] = useState<boolean>(false);
+  const [showDuplicatePopup, setShowDuplicatePopup] = useState<boolean>(false);
   const [qtyInput, setQtyInput] = useState<string>("1");
 
   // State Deteksi Hak Akses Admin
@@ -64,12 +68,17 @@ export default function ProductCard({
   const photoStreamRef = useRef<MediaStream | null>(null);
 
   // State Kamera Scanner Barcode (Mendukung Barcode 1D & QR Code 2D)
-  const [isBarcodeScannerActive, setIsBarcodeScannerActive] = useState<boolean>(false);
+  const [isBarcodeScannerActive, setIsBarcodeScannerActive] =
+    useState<boolean>(false);
   const html5QrCodeRef = useRef<any>(null);
 
   // State Data Tampilan Lokal
-  const [currentGambar, setCurrentGambar] = useState<string | null>(product.gambar);
-  const [currentBarcode, setCurrentBarcode] = useState<string>(product.barcode || "");
+  const [currentGambar, setCurrentGambar] = useState<string | null>(
+    product.gambar
+  );
+  const [currentBarcode, setCurrentBarcode] = useState<string>(
+    product.barcode || ""
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +86,23 @@ export default function ProductCard({
   const addToCart = useCartStore(
     (state: any) => state.addToCart || state.addItem
   );
+  const cartItems = useCartStore(
+    (state: any) => state.items || state.cart || state.cartItems || []
+  );
+
+  const existingCartItem = Array.isArray(cartItems)
+    ? cartItems.find((item: any) => {
+        const p = item?.product || item;
+        return (
+          String(p?.kd_br || item?.kd_br || "").trim() ===
+          String(product.kd_br || "").trim()
+        );
+      })
+    : null;
+
+  const existingCartQty = existingCartItem
+    ? existingCartItem.quantity || existingCartItem.qty || 1
+    : 0;
 
   const price = parseFloat(product.h_anggota) || 0;
   const parsedPreviewQty = Math.max(1, parseInt(qtyInput, 10) || 1);
@@ -91,9 +117,7 @@ export default function ProductCard({
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         const u = JSON.parse(storedUser);
-        const role = String(
-          u.role || u.Hak || u.level_user || ""
-        )
+        const role = String(u.role || u.Hak || u.level_user || "")
           .trim()
           .toLowerCase();
         if (
@@ -423,6 +447,10 @@ export default function ProductCard({
     e.preventDefault();
     e.stopPropagation();
     setQtyInput("1");
+    if (existingCartItem) {
+      setShowDuplicatePopup(true);
+      return;
+    }
     setShowQtyModal(true);
   };
 
@@ -542,9 +570,7 @@ export default function ProductCard({
               aria-label="Favorit"
             >
               <FiHeart
-                className={`w-3.5 h-3.5 ${
-                  isFavorite ? "fill-white" : ""
-                }`}
+                className={`w-3.5 h-3.5 ${isFavorite ? "fill-white" : ""}`}
               />
             </button>
           </div>
@@ -607,6 +633,90 @@ export default function ProductCard({
           </button>
         </div>
       </div>
+
+      {/* POPUP PERINGATAN: BARANG WES NANG KERANJANG */}
+      {showDuplicatePopup && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowDuplicatePopup(false);
+          }}
+        >
+          <div
+            className="bg-white w-full max-w-xs sm:max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-amber-200 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Gradasi Kuning-Oranye */}
+            <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-4 py-4 text-center relative">
+              <button
+                type="button"
+                onClick={() => setShowDuplicatePopup(false)}
+                className="absolute top-3 right-3 text-white/80 hover:text-white p-1 rounded-full hover:bg-white/15 transition"
+              >
+                <FiX className="w-4 h-4" />
+              </button>
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center shadow-lg mb-2">
+                <FiAlertTriangle className="w-8 h-8 text-white animate-bounce" />
+              </div>
+              <h3 className="text-base sm:text-lg font-extrabold text-white tracking-wide">
+                Barang Wes Nang Keranjang!
+              </h3>
+            </div>
+
+            {/* Isi Info Barang */}
+            <div className="p-4 text-center space-y-3">
+              <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3">
+                <p className="text-xs font-bold text-gray-800 line-clamp-2 leading-snug">
+                  {product.nama}
+                </p>
+                <div className="mt-1.5 inline-flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-full border border-amber-200 text-[11px] font-semibold text-amber-700">
+                  <FiShoppingCart className="w-3.5 h-3.5" />
+                  <span>Sudah ada di keranjang (Qty: {existingCartQty})</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                Barang ini sudah masuk keranjang Anda. Mau lihat keranjang atau
+                tetap tambah jumlahnya?
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDuplicatePopup(false);
+                    setShowQtyModal(true);
+                  }}
+                  className="py-2.5 px-3 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-50 active:scale-95 transition"
+                >
+                  Tetap Tambah
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDuplicatePopup(false);
+                    router.push("/cart");
+                  }}
+                  className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-1.5"
+                >
+                  <FiShoppingCart className="w-3.5 h-3.5" />
+                  Lihat Keranjang
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDuplicatePopup(false)}
+                className="w-full py-2 text-[11px] font-semibold text-gray-400 hover:text-gray-600 transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL POPUP INPUT QTY KERANJANG */}
       {showQtyModal && (
@@ -746,7 +856,11 @@ export default function ProductCard({
                   {product.nama}
                 </p>
                 <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                  Kode: <span className="font-bold text-blue-600">{product.kd_br}</span> | Satuan: {product.satuan || "DUS"}
+                  Kode:{" "}
+                  <span className="font-bold text-blue-600">
+                    {product.kd_br}
+                  </span>{" "}
+                  | Satuan: {product.satuan || "DUS"}
                 </p>
               </div>
 
@@ -888,7 +1002,8 @@ export default function ProductCard({
                 </div>
 
                 <p className="text-[9px] text-slate-400 italic">
-                  *Bisa mendeteksi Barcode Garis (1D) maupun QR Code (2D), atau tembak dengan alat scan di PC.
+                  *Bisa mendeteksi Barcode Garis (1D) maupun QR Code (2D), atau
+                  tembak dengan alat scan di PC.
                 </p>
               </div>
 
@@ -919,7 +1034,9 @@ export default function ProductCard({
                   className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition disabled:opacity-50"
                 >
                   <FiSave className="w-3.5 h-3.5" />
-                  <span>{isSaving ? "Menyimpan ke Server..." : "Simpan Data"}</span>
+                  <span>
+                    {isSaving ? "Menyimpan ke Server..." : "Simpan Data"}
+                  </span>
                 </button>
               </div>
             </form>
