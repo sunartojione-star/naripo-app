@@ -13,6 +13,12 @@ import {
   FiDollarSign,
   FiShoppingBag,
   FiClipboard,
+  FiBarChart2,
+  FiUsers,
+  FiCreditCard,
+  FiTrendingUp,
+  FiTruck,
+  FiFileText,
 } from "react-icons/fi";
 
 export default function Home() {
@@ -21,6 +27,7 @@ export default function Home() {
   const [favoriteKdBrs, setFavoriteKdBrs] = useState<Set<string>>(new Set());
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
   const [errorProducts, setErrorProducts] = useState<string>("");
+  const [needsLogin, setNeedsLogin] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string>("");
   const [selectedProduct, setSelectedProduct] = useState<Barang | null>(null);
 
@@ -28,6 +35,8 @@ export default function Home() {
   const rawApiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
+
+  const isAdmin = userRole.toLowerCase() === "admin";
 
   useEffect(() => {
     setIsMounted(true);
@@ -49,7 +58,15 @@ export default function Home() {
 
     const fetchData = async () => {
       setLoadingProducts(true);
+      setErrorProducts("");
+      setNeedsLogin(false);
       const token = localStorage.getItem("token");
+
+      if (!token) {
+        setNeedsLogin(true);
+        setLoadingProducts(false);
+        return;
+      }
 
       try {
         const resProducts = await fetch(
@@ -58,10 +75,17 @@ export default function Home() {
             headers: {
               Accept: "application/json",
               "Content-Type": "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
+              Authorization: `Bearer ${token}`,
             },
           }
         );
+
+        if (resProducts.status === 401) {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          setNeedsLogin(true);
+          return;
+        }
 
         if (!resProducts.ok) {
           throw new Error(`Server Error (${resProducts.status})`);
@@ -80,24 +104,22 @@ export default function Home() {
 
         setNewProducts(prodList);
 
-        if (token) {
-          const resFav = await fetch(`${apiUrl}/favorites`, {
-            headers: {
-              Accept: "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
-            },
-          });
+        const resFav = await fetch(`${apiUrl}/favorites`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-          if (resFav.ok) {
-            const resultFav = await resFav.json();
-            if (resultFav.success && Array.isArray(resultFav.data)) {
-              const favSet = new Set<string>(
-                resultFav.data.map(
-                  (favItem: { kd_br: string }) => favItem.kd_br
-                )
-              );
-              setFavoriteKdBrs(favSet);
-            }
+        if (resFav.ok) {
+          const resultFav = await resFav.json();
+          if (resultFav.success && Array.isArray(resultFav.data)) {
+            const favSet = new Set<string>(
+              resultFav.data.map(
+                (favItem: { kd_br: string }) => favItem.kd_br
+              )
+            );
+            setFavoriteKdBrs(favSet);
           }
         }
       } catch (err: any) {
@@ -155,6 +177,16 @@ export default function Home() {
     }
   };
 
+  const handleInputBS = () => {
+    if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
+    router.push("/BS/halamanBS");
+  };
+
+  const handleCekPiutang = () => {
+    if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
+    router.push("/laporan/hutangku");
+  };
+
   const handleCekOmset = () => {
     if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
     router.push("/laporan/omsetku");
@@ -165,14 +197,9 @@ export default function Home() {
     router.push("/laporan/laporanpo");
   };
 
-  const handleInputBS = () => {
-    if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
-    router.push("/BS/halamanBS");
-  };
-
   const handleStokOpname = () => {
     if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
-    if (userRole.toLowerCase() !== "admin") {
+    if (!isAdmin) {
       return alert("Akses ditolak. Menu Stok Opname hanya khusus untuk Admin.");
     }
     router.push("/opname/halamanopname");
@@ -197,6 +224,7 @@ export default function Home() {
                 </Link>
               </div>
 
+              {/* MENU UMUM (SEMUA USER) */}
               <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-3">
                 <button
                   type="button"
@@ -209,11 +237,11 @@ export default function Home() {
 
                 <button
                   type="button"
-                  onClick={handleStokOpname}
-                  className="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                  onClick={handleCekPiutang}
+                  className="bg-pink-600 hover:bg-pink-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
                 >
-                  <FiClipboard className="w-3.5 h-3.5 shrink-0" />
-                  <span>STOK OPNAME</span>
+                  <FiFileText className="w-3.5 h-3.5 shrink-0" />
+                  <span>CEK PIUTANG</span>
                 </button>
 
                 <button
@@ -228,12 +256,71 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleCekOrderanku}
-                  className="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                  className="bg-indigo-500 hover:bg-indigo-600 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
                 >
                   <FiShoppingBag className="w-3.5 h-3.5 shrink-0" />
                   <span>CEK ORDERANKU</span>
                 </button>
               </div>
+
+              {/* MENU KHUSUS ADMIN (STOK OPNAME + 5 LAPORAN) */}
+              {isAdmin && (
+                <div className="w-full mt-2.5 sm:mt-3.5 pt-2.5 sm:pt-3.5 border-t border-white/20">
+                  <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-100 mb-1.5 sm:mb-2 text-center sm:text-left">
+                    Menu Khusus Admin
+                  </p>
+                  <div className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleStokOpname}
+                      className="bg-purple-600 hover:bg-purple-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiClipboard className="w-3.5 h-3.5 shrink-0" />
+                      <span>STOK OPNAME</span>
+                    </button>
+
+                    <Link
+                      href="/laporan/labarugi"
+                      className="bg-teal-500 hover:bg-teal-600 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiBarChart2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>LABA RUGI</span>
+                    </Link>
+
+                    <Link
+                      href="/laporan/piutangaktif"
+                      className="bg-sky-500 hover:bg-sky-600 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiUsers className="w-3.5 h-3.5 shrink-0" />
+                      <span>PIUTANG ANGGOTA</span>
+                    </Link>
+
+                    <Link
+                      href="/laporan/biayaoperasional"
+                      className="bg-orange-600 hover:bg-orange-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiCreditCard className="w-3.5 h-3.5 shrink-0" />
+                      <span>BIAYA OPS</span>
+                    </Link>
+
+                    <Link
+                      href="/laporan/pendapatanlain"
+                      className="bg-lime-600 hover:bg-lime-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiTrendingUp className="w-3.5 h-3.5 shrink-0" />
+                      <span>PENDAPATAN LAIN</span>
+                    </Link>
+
+                    <Link
+                      href="/laporan/hutangsupplier"
+                      className="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiTruck className="w-3.5 h-3.5 shrink-0" />
+                      <span>HUTANG SUPPLIER</span>
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -262,6 +349,18 @@ export default function Home() {
             {loadingProducts ? (
               <div className="flex justify-center items-center py-12">
                 <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-blue-600"></div>
+              </div>
+            ) : needsLogin ? (
+              <div className="text-center py-8 px-4 bg-white rounded-xl border border-gray-100 shadow-xs">
+                <p className="text-xs sm:text-sm text-gray-600 mb-3">
+                  Silakan login terlebih dahulu untuk melihat daftar produk terbaru.
+                </p>
+                <Link
+                  href="/login"
+                  className="inline-block bg-blue-600 text-white px-5 py-2 rounded-lg text-xs sm:text-sm font-semibold hover:bg-blue-700 transition"
+                >
+                  Login Sekarang
+                </Link>
               </div>
             ) : errorProducts ? (
               <div className="p-3 bg-red-50 text-red-600 rounded-lg text-center text-xs">

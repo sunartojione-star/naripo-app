@@ -58,23 +58,25 @@ export default function Header() {
       try {
         const userObj = JSON.parse(storedUser);
         setUserName(userObj.name || userObj.nama || "User");
-        if (userObj.foto) {
-          setUserFoto(userObj.foto);
-        }
+        setUserFoto(userObj.foto || "");
 
-        // Cek apakah user adalah admin (sesuaikan key field role dari database Anda, misal: role, level, atau is_admin)
-        const role = userObj.role || userObj.level || "";
+        const role =
+          userObj.role || userObj.Hak || userObj.level_user || userObj.level || "";
         const checkIsAdmin =
           String(role).toLowerCase() === "admin" ||
           userObj.is_admin === true ||
           userObj.is_admin === 1;
-        
+
         setIsAdmin(checkIsAdmin);
       } catch (e) {
         console.error("Gagal parsing data user", e);
       }
+    } else {
+      setUserName("");
+      setUserFoto("");
+      setIsAdmin(false);
     }
-  }, []);
+  }, [pathname]);
 
   // Tutup popup akun & menu atas jika klik di luar
   useEffect(() => {
@@ -131,6 +133,7 @@ export default function Header() {
     } finally {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      setIsAdmin(false);
       setIsProfileOpen(false);
       router.push("/login");
     }
@@ -171,7 +174,7 @@ export default function Header() {
       href: "/laporan/hutangku",
       icon: FiDollarSign,
       active: pathname.startsWith("/laporan/hutangku"),
-    },   
+    },
     {
       label: "Order",
       fullLabel: "Cek Orderanku",
@@ -181,7 +184,8 @@ export default function Header() {
     },
   ];
 
-  const isAccountActive = isProfileOpen || pathname.startsWith("/userprofile") || pathname.startsWith("/laporan/");
+  const isAccountActive =
+    isProfileOpen || pathname.startsWith("/userprofile");
 
   const AccountPopupCard = ({ positionClass }: { positionClass: string }) => (
     <div

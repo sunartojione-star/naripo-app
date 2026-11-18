@@ -7,8 +7,10 @@ import Layout from "@/components/Layout";
 import {
   FiArrowLeft,
   FiCalendar,
+  FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
+  FiChevronUp,
   FiFileText,
   FiFilter,
   FiBarChart2,
@@ -85,11 +87,27 @@ const formatAmount = (value: unknown) => {
     : String(value);
 };
 
+const formatCompactAxis = (value: number) => {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 1_000_000_000) {
+    return `${sign}Rp ${(abs / 1_000_000_000).toFixed(1).replace(/\.0$/, "")} M`;
+  }
+  if (abs >= 1_000_000) {
+    return `${sign}Rp ${(abs / 1_000_000).toFixed(1).replace(/\.0$/, "")} jt`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}Rp ${(abs / 1_000).toFixed(0)} rb`;
+  }
+  return `${sign}Rp ${abs}`;
+};
+
 export default function LaporanLabaRugiPage() {
   const router = useRouter();
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   const [startDate, setStartDate] = useState<string>(() => {
     const now = new Date();
@@ -107,6 +125,7 @@ export default function LaporanLabaRugiPage() {
 
   useEffect(() => {
     setCurrentPage(1);
+    setExpandedCards({});
   }, [startDate, endDate, itemsPerPage]);
 
   const fetchLaporan = async () => {
@@ -194,12 +213,22 @@ export default function LaporanLabaRugiPage() {
     return filteredReports.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredReports, currentPage, itemsPerPage]);
 
-  // Konfigurasi Line Chart sesuai gaya gambar referensi Anda
+  const toggleExpandCard = (cardKey: string) => {
+    setExpandedCards((prev) => ({ ...prev, [cardKey]: !prev[cardKey] }));
+  };
+
+  // Konfigurasi Line Chart
   const chartData = useMemo(() => {
-    const labels = filteredReports.map((item) => formatDDMMYYYY(String(item.tgl || "")));
-    const penjualanData = filteredReports.map((item) => Number(item.saldo_awal) || 0);
+    const labels = filteredReports.map((item) =>
+      formatDDMMYYYY(String(item.tgl || ""))
+    );
+    const penjualanData = filteredReports.map(
+      (item) => Number(item.saldo_awal) || 0
+    );
     const omsetData = filteredReports.map((item) => Number(item.omset) || 0);
-    const keuntunganData = filteredReports.map((item) => Number(item.setor_kasir) || 0);
+    const keuntunganData = filteredReports.map(
+      (item) => Number(item.setor_kasir) || 0
+    );
 
     return {
       labels,
@@ -207,27 +236,27 @@ export default function LaporanLabaRugiPage() {
         {
           label: "Penjualan",
           data: penjualanData,
-          borderColor: "#06b6d4", // Cyan terang sesuai gambar
+          borderColor: "#06b6d4",
           backgroundColor: "#06b6d4",
-          pointRadius: 4,
+          pointRadius: 3,
           pointHoverRadius: 6,
-          tension: 0, // Garis bersudut tajam/lurus seperti contoh
+          tension: 0,
         },
         {
           label: "Omset Cash",
           data: omsetData,
-          borderColor: "#10b981", // Hijau
+          borderColor: "#10b981",
           backgroundColor: "#10b981",
-          pointRadius: 4,
+          pointRadius: 3,
           pointHoverRadius: 6,
           tension: 0,
         },
         {
           label: "Keuntungan",
           data: keuntunganData,
-          borderColor: "#f59e0b", // Amber/Kuning
+          borderColor: "#f59e0b",
           backgroundColor: "#f59e0b",
-          pointRadius: 4,
+          pointRadius: 3,
           pointHoverRadius: 6,
           tension: 0,
         },
@@ -237,21 +266,41 @@ export default function LaporanLabaRugiPage() {
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: "index" as const,
+      intersect: false,
+    },
     plugins: {
       legend: {
         position: "top" as const,
+        labels: {
+          boxWidth: 12,
+          font: { size: 11 },
+        },
       },
-      title: {
-        display: true,
-        text: "Grafik Tren Penjualan, Omset Cash, dan Keuntungan",
+      tooltip: {
+        callbacks: {
+          label: function (context: any) {
+            const val = Number(context.raw) || 0;
+            return `${context.dataset.label}: Rp ${val.toLocaleString("id-ID")}`;
+          },
+        },
       },
     },
     scales: {
+      x: {
+        ticks: {
+          maxRotation: 45,
+          font: { size: 10 },
+        },
+      },
       y: {
         beginAtZero: true,
         ticks: {
+          font: { size: 10 },
           callback: function (value: any) {
-            return "Rp " + Number(value).toLocaleString("id-ID");
+            return formatCompactAxis(Number(value));
           },
         },
       },
@@ -261,22 +310,23 @@ export default function LaporanLabaRugiPage() {
   return (
     <Layout>
       <Head>
-        <title>Rekap Penjualan - Naripo</title>
+        <title>Rekap Penjualan & Laba Rugi - Naripo</title>
       </Head>
 
-      <div className="min-h-screen bg-slate-50/70 px-2.5 py-2.5 sm:px-4 sm:py-6">
+      <div className="min-h-screen bg-slate-50/70 px-2.5 pt-2.5 pb-20 sm:px-4 sm:py-6">
         <div className="mx-auto max-w-7xl space-y-3 sm:space-y-4">
+          {/* Header & Filter */}
           <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-md">
-            <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white sm:p-5">
-              <div className="flex items-center gap-2.5">
+            <div className="flex items-start justify-between gap-2 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 px-3.5 py-3.5 text-white sm:items-center sm:p-5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/15 sm:h-10 sm:w-10">
                   <FiFileText className="h-5 w-5 text-white" />
                 </div>
-                <div>
-                  <h1 className="text-base font-extrabold leading-tight sm:text-lg">
-                    Rekap Penjualan
+                <div className="min-w-0">
+                  <h1 className="text-sm font-extrabold leading-tight sm:text-lg">
+                    Rekap Penjualan & Laba Rugi
                   </h1>
-                  <p className="text-[11px] text-blue-100">
+                  <p className="text-[11px] text-blue-100 leading-snug">
                     Rekap harian berdasarkan rentang tanggal
                   </p>
                 </div>
@@ -292,7 +342,7 @@ export default function LaporanLabaRugiPage() {
               </button>
             </div>
 
-            <div className="space-y-3 p-3.5 sm:p-5">
+            <div className="space-y-3 p-3 sm:p-5">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span className="flex items-center gap-1.5">
                   <FiFilter className="h-3.5 w-3.5 text-blue-600" />
@@ -344,7 +394,7 @@ export default function LaporanLabaRugiPage() {
                   </div>
                 </div>
 
-                <div>
+                <div className="col-span-2 sm:col-span-1">
                   <button
                     type="button"
                     onClick={fetchLaporan}
@@ -384,12 +434,149 @@ export default function LaporanLabaRugiPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              {/* 4 KARTU RINGKASAN KPI UTAMA (HP & PC) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                <div className="flex items-center justify-between sm:block rounded-xl border border-cyan-100 bg-white px-3.5 py-2.5 sm:p-3.5 shadow-xs">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Total Penjualan
+                  </p>
+                  <p className="font-mono text-sm sm:text-base font-extrabold text-cyan-600 sm:mt-1">
+                    {formatAmount(grandTotals.saldo_awal)}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between sm:block rounded-xl border border-emerald-100 bg-white px-3.5 py-2.5 sm:p-3.5 shadow-xs">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Total Omset Cash
+                  </p>
+                  <p className="font-mono text-sm sm:text-base font-extrabold text-emerald-600 sm:mt-1">
+                    {formatAmount(grandTotals.omset)}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between sm:block rounded-xl border border-amber-100 bg-white px-3.5 py-2.5 sm:p-3.5 shadow-xs">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Total Keuntungan
+                  </p>
+                  <p className="font-mono text-sm sm:text-base font-extrabold text-amber-600 sm:mt-1">
+                    {formatAmount(grandTotals.setor_kasir)}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between sm:block rounded-xl border border-blue-100 bg-white px-3.5 py-2.5 sm:p-3.5 shadow-xs">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Gross Profit
+                  </p>
+                  <p className="font-mono text-sm sm:text-base font-extrabold text-blue-700 sm:mt-1">
+                    {formatAmount(grandTotals.saldo_akhir)}
+                  </p>
+                </div>
+              </div>
+
+              {/* LINE CHART (GRAFIK GARIS) */}
+              <div className="rounded-2xl border border-slate-100 bg-white p-3.5 sm:p-6 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <FiBarChart2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600 shrink-0" />
+                  <h2 className="text-xs sm:text-base font-bold text-slate-800">
+                    Grafik Tren Penjualan, Omset Cash, & Keuntungan
+                  </h2>
+                </div>
+                <div className="w-full h-[280px] sm:h-[380px]">
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+              </div>
+
+              {/* TAMPILAN HP: Kartu Harian Kompak + Expandable 23 Detail */}
+              <div className="space-y-2.5 md:hidden">
+                {paginatedReports.map((item, index) => {
+                  const cardKey = `${item.tgl || "rekap"}-${index}`;
+                  const isExpanded = !!expandedCards[cardKey];
+
+                  return (
+                    <div
+                      key={cardKey}
+                      className="rounded-xl border border-slate-100 bg-white p-3 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="text-xs font-extrabold text-slate-800">
+                          📅 {formatDDMMYYYY(String(item.tgl || ""))}
+                        </span>
+                        <span className="font-mono text-xs font-extrabold text-cyan-600">
+                          {formatAmount(item.saldo_awal)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block">Omset Cash</span>
+                          <span className="font-mono font-bold text-emerald-600">
+                            {formatAmount(item.omset)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-400 block">Keuntungan</span>
+                          <span className="font-mono font-bold text-amber-600">
+                            {formatAmount(item.setor_kasir)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">Biaya Ops</span>
+                          <span className="font-mono font-semibold text-slate-700">
+                            {formatAmount(item.biaya_lain2)}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-400 block">Gross Profit</span>
+                          <span className="font-mono font-bold text-blue-700">
+                            {formatAmount(item.saldo_akhir)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandCard(cardKey)}
+                        className="w-full flex items-center justify-center gap-1 rounded-lg bg-slate-50 hover:bg-slate-100 py-1.5 text-[11px] font-semibold text-slate-600 transition"
+                      >
+                        <span>
+                          {isExpanded
+                            ? "Tutup Detail"
+                            : `Lihat Semua (${rekapColumns.length} item)`}
+                        </span>
+                        {isExpanded ? (
+                          <FiChevronUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <FiChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+
+                      {isExpanded && (
+                        <div className="pt-2 border-t border-slate-100 space-y-1">
+                          {rekapColumns.map((col) => (
+                            <div
+                              key={col.key}
+                              className="flex items-center justify-between gap-2 text-[11px] py-0.5"
+                            >
+                              <span className="text-slate-500">{col.label}</span>
+                              <span className="font-mono font-semibold text-slate-800">
+                                {formatAmount(item[col.key])}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* TAMPILAN PC: Tabel Lengkap 23 Kolom */}
+              <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="min-w-max w-full border-collapse text-xs">
                     <thead className="border-b border-slate-200 bg-slate-100 text-slate-700">
                       <tr>
-                        <th className="sticky left-0 z-10 bg-slate-100 px-3 py-3 text-left font-bold">
+                        <th className="sticky left-0 z-10 border-r border-slate-200 bg-slate-100 px-3 py-3 text-left font-bold">
                           Tanggal
                         </th>
                         {rekapColumns.map((column) => (
@@ -408,7 +595,7 @@ export default function LaporanLabaRugiPage() {
                           key={`${item.tgl || "rekap"}-${index}`}
                           className="hover:bg-blue-50/50"
                         >
-                          <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-3 font-semibold text-slate-800">
+                          <td className="sticky left-0 border-r border-slate-200 whitespace-nowrap bg-white px-3 py-3 font-semibold text-slate-800">
                             {formatDDMMYYYY(String(item.tgl || ""))}
                           </td>
                           {rekapColumns.map((column) => (
@@ -424,7 +611,7 @@ export default function LaporanLabaRugiPage() {
                     </tbody>
                     <tfoot className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
                       <tr>
-                        <td className="sticky left-0 whitespace-nowrap bg-slate-50 px-3 py-3 text-left">
+                        <td className="sticky left-0 border-r border-slate-200 whitespace-nowrap bg-slate-50 px-3 py-3 text-left">
                           GRAND TOTAL
                         </td>
                         {rekapColumns.map((column) => (
@@ -441,19 +628,7 @@ export default function LaporanLabaRugiPage() {
                 </div>
               </div>
 
-              {/* LINE CHART (GRAFIK GARIS) */}
-              <div className="rounded-2xl border border-slate-100 bg-white p-4 sm:p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <FiBarChart2 className="w-5 h-5 text-cyan-600" />
-                  <h2 className="text-sm sm:text-base font-bold text-slate-800">
-                    Grafik Tren Penjualan, Omset Cash, & Keuntungan
-                  </h2>
-                </div>
-                <div className="w-full h-[350px] sm:h-[420px]">
-                  <Line data={chartData} options={chartOptions} />
-                </div>
-              </div>
-
+              {/* Pagination */}
               <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:p-4">
                 <div className="flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
                   <span>Tampilkan:</span>

@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import Layout from "@/components/Layout";
+import Layout from "../../components/Layout";
 import {
   FiArrowLeft,
   FiCalendar,
   FiChevronLeft,
   FiChevronRight,
+  FiDollarSign,
   FiFileText,
   FiFilter,
+  FiLayers,
   FiSearch,
 } from "react-icons/fi";
 
@@ -141,7 +143,10 @@ export default function BiayaOperasionalPage() {
       string,
       {
         tgl: string;
-        transactions: Record<string, { kdTran: string; items: any[]; subTotalTran: number }>;
+        transactions: Record<
+          string,
+          { kdTran: string; items: any[]; subTotalTran: number }
+        >;
         subTotalTgl: number;
       }
     > = {};
@@ -175,20 +180,17 @@ export default function BiayaOperasionalPage() {
     return Object.values(groups);
   }, [filteredReports]);
 
-  // Flatten kelompok data untuk kebutuhan pagination baris tabel
+  // Flatten kelompok data untuk kebutuhan pagination
   const flattenedRows = useMemo(() => {
     const rows: Array<{ type: "header" | "tran" | "item"; data: any }> = [];
 
     groupedData.forEach((group) => {
-      // Baris Header Tanggal + Subtotal Tanggal
       rows.push({ type: "header", data: group });
 
       Object.values(group.transactions).forEach((tran) => {
-        // Baris Sub-header No. Transaksi (Kd_Tran)
         rows.push({ type: "tran", data: tran });
 
         tran.items.forEach((item) => {
-          // Baris Detail Item
           rows.push({ type: "item", data: item });
         });
       });
@@ -217,19 +219,20 @@ export default function BiayaOperasionalPage() {
         <title>Biaya Operasional - Naripo</title>
       </Head>
 
-      <div className="min-h-screen bg-slate-50/70 px-2.5 py-2.5 sm:px-4 sm:py-6">
+      <div className="min-h-screen bg-slate-50/70 px-2.5 pt-2.5 pb-20 sm:px-4 sm:py-6">
         <div className="mx-auto max-w-7xl space-y-3 sm:space-y-4">
+          {/* Header, Ringkasan Total & Filter Periode */}
           <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-md">
-            <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 px-4 py-3.5 text-white sm:p-5">
-              <div className="flex items-center gap-2.5">
+            <div className="flex items-start justify-between gap-2 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 px-3.5 py-3.5 text-white sm:items-center sm:p-5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/15 sm:h-10 sm:w-10">
                   <FiFileText className="h-5 w-5 text-white" />
                 </div>
-                <div>
-                  <h1 className="text-base font-extrabold leading-tight sm:text-lg">
+                <div className="min-w-0">
+                  <h1 className="text-sm font-extrabold leading-tight sm:text-lg">
                     Rekap Biaya Operasional (Hierarki)
                   </h1>
-                  <p className="text-[11px] text-blue-100">
+                  <p className="text-[11px] text-blue-100 leading-snug">
                     Dikelompokkan berdasarkan Tanggal dan No. Transaksi
                   </p>
                 </div>
@@ -245,14 +248,56 @@ export default function BiayaOperasionalPage() {
               </button>
             </div>
 
-            <div className="space-y-3 p-3.5 sm:p-5">
+            <div className="space-y-3 p-3 sm:p-5">
+              {/* Kotak Ringkasan Atas */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                <div className="flex items-center justify-between sm:justify-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/60 px-3.5 py-2.5 sm:px-4 sm:py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 sm:h-9 sm:w-9">
+                      <FiLayers className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 sm:hidden">
+                      Total Transaksi
+                    </p>
+                  </div>
+                  <div className="text-right sm:text-left">
+                    <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Total Transaksi
+                    </p>
+                    <p className="text-sm font-extrabold text-slate-800 sm:text-lg">
+                      {filteredReports.length}{" "}
+                      <span className="text-[11px] font-medium text-slate-500">
+                        transaksi
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/70 px-3.5 py-2.5 sm:px-4 sm:py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 sm:h-9 sm:w-9">
+                      <FiDollarSign className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 sm:hidden">
+                      Total Biaya Operasional
+                    </p>
+                  </div>
+                  <div className="text-right sm:text-left">
+                    <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Total Biaya Operasional
+                    </p>
+                    <p className="font-mono text-sm font-extrabold text-rose-600 sm:text-lg">
+                      {formatAmount(grandTotalBiaya)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter Periode Tanggal */}
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                 <span className="flex items-center gap-1.5">
                   <FiFilter className="h-3.5 w-3.5 text-blue-600" />
                   Filter Periode Tanggal
-                </span>
-                <span className="text-[11px] font-medium text-slate-400">
-                  {filteredReports.length} transaksi
                 </span>
               </div>
 
@@ -297,7 +342,7 @@ export default function BiayaOperasionalPage() {
                   </div>
                 </div>
 
-                <div>
+                <div className="col-span-2 sm:col-span-1">
                   <button
                     type="button"
                     onClick={fetchRekapBiaya}
@@ -308,21 +353,32 @@ export default function BiayaOperasionalPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="pt-2">
-                <div className="relative w-full sm:w-80">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                    <FiSearch className="h-4 w-4" />
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Cari keterangan, kode akun, no tran..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
-                  />
-                </div>
-              </div>
+          {/* Pencarian Sticky (Tetap Tampil Rapi Saat Scroll) */}
+          <div className="sticky top-14 sm:top-16 z-20 rounded-2xl border border-slate-200/80 bg-white/95 backdrop-blur-sm p-2.5 sm:p-3 shadow-sm">
+            <div className="relative w-full">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                <FiSearch className="h-4 w-4" />
+              </span>
+              <input
+                type="text"
+                placeholder="Cari keterangan, kode akun, no tran..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-8 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs font-bold text-slate-400 hover:text-slate-600"
+                  title="Hapus pencarian"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
@@ -352,28 +408,109 @@ export default function BiayaOperasionalPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              {/* TAMPILAN HP: Daftar Kartu Hierarki (Tidak Terpotong) */}
+              <div className="space-y-2 md:hidden">
+                {paginatedRows.map((row, index) => {
+                  if (row.type === "header") {
+                    const group = row.data;
+                    return (
+                      <div
+                        key={`m-header-${group.tgl}-${index}`}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50/90 px-3 py-2 text-xs font-bold text-blue-900"
+                      >
+                        <span>📅 {formatDDMMYYYY(group.tgl)}</span>
+                        <span className="font-mono text-blue-700">
+                          {formatAmount(group.subTotalTgl)}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  if (row.type === "tran") {
+                    const tran = row.data;
+                    return (
+                      <div
+                        key={`m-tran-${tran.kdTran}-${index}`}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-100/80 px-3 py-1.5 text-[11px] font-semibold text-slate-700"
+                      >
+                        <span className="font-mono truncate">
+                          └─ {tran.kdTran}
+                        </span>
+                        <span className="shrink-0 font-mono text-slate-800">
+                          {formatAmount(tran.subTotalTran)}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const item = row.data;
+                  return (
+                    <div
+                      key={`m-item-${index}`}
+                      className="rounded-xl border border-slate-100 bg-white p-3 shadow-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-700">
+                            {String(item.Kode_Akun || "-").trim()}
+                          </span>
+                          <span className="font-mono text-[10px] text-slate-400 truncate">
+                            {item.Kd_Tran || "-"}
+                          </span>
+                        </div>
+                        <span className="shrink-0 font-mono text-xs font-extrabold text-rose-600">
+                          {formatAmount(item.Jumlah)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-700 leading-snug break-words">
+                        {item.Ket || "-"}
+                      </p>
+                    </div>
+                  );
+                })}
+
+                {/* Kartu Grand Total di Bawah Daftar (HP) */}
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-3 font-bold text-slate-900">
+                  <span className="text-xs">GRAND TOTAL BIAYA</span>
+                  <span className="font-mono text-sm text-rose-600">
+                    {formatAmount(grandTotalBiaya)}
+                  </span>
+                </div>
+              </div>
+
+              {/* TAMPILAN PC: Tabel Hierarki Lengkap */}
+              <div className="hidden md:block overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="min-w-max w-full border-collapse text-xs">
+                  <table className="w-full border-collapse text-xs sm:text-sm">
                     <thead className="border-b border-slate-200 bg-slate-100 text-slate-700">
                       <tr>
-                        <th className="px-3 py-3 text-left font-bold">Kode Akun</th>
-                        <th className="px-3 py-3 text-left font-bold">No. Transaksi</th>
-                        <th className="px-3 py-3 text-left font-bold">Keterangan</th>
-                        <th className="px-3 py-3 text-right font-bold">Jumlah</th>
+                        <th className="px-3 py-3 text-left font-bold">
+                          Kode Akun
+                        </th>
+                        <th className="px-3 py-3 text-left font-bold">
+                          No. Transaksi
+                        </th>
+                        <th className="px-3 py-3 text-left font-bold">
+                          Keterangan
+                        </th>
+                        <th className="px-3 py-3 text-right font-bold">
+                          Jumlah
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {paginatedRows.map((row, index) => {
                         if (row.type === "header") {
-                          // Baris Group Header Tanggal & Sub-total Tanggal
                           const group = row.data;
                           return (
-                            <tr key={`header-${group.tgl}-${index}`} className="bg-blue-50/80 font-bold text-blue-900 border-t-2 border-blue-200">
+                            <tr
+                              key={`header-${group.tgl}-${index}`}
+                              className="bg-blue-50/80 font-bold text-blue-900 border-t-2 border-blue-200"
+                            >
                               <td colSpan={3} className="px-3 py-2.5">
                                 📅 Tanggal: {formatDDMMYYYY(group.tgl)}
                               </td>
-                              <td className="px-3 py-2.5 text-right font-mono">
+                              <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">
                                 Sub-Total Tgl: {formatAmount(group.subTotalTgl)}
                               </td>
                             </tr>
@@ -381,37 +518,44 @@ export default function BiayaOperasionalPage() {
                         }
 
                         if (row.type === "tran") {
-                          // Baris Group No. Transaksi (Kd_Tran)
                           const tran = row.data;
                           return (
-                            <tr key={`tran-${tran.kdTran}-${index}`} className="bg-slate-100/70 font-semibold text-slate-800">
+                            <tr
+                              key={`tran-${tran.kdTran}-${index}`}
+                              className="bg-slate-100/70 font-semibold text-slate-800"
+                            >
                               <td className="px-3 py-2 pl-6" colSpan={1}>
                                 └─ No. Transaksi
                               </td>
                               <td className="px-3 py-2 font-mono" colSpan={2}>
                                 {tran.kdTran}
                               </td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-700">
+                              <td className="px-3 py-2 text-right font-mono text-slate-700 whitespace-nowrap">
                                 {formatAmount(tran.subTotalTran)}
                               </td>
                             </tr>
                           );
                         }
 
-                        // Baris Item Detail
                         const item = row.data;
                         return (
-                          <tr key={`item-${index}`} className="hover:bg-blue-50/30">
+                          <tr
+                            key={`item-${index}`}
+                            className="hover:bg-blue-50/30"
+                          >
                             <td className="px-3 py-2.5 pl-10 font-mono font-semibold text-slate-700">
                               {String(item.Kode_Akun || "").trim()}
                             </td>
                             <td className="px-3 py-2.5 font-mono text-slate-500">
                               {item.Kd_Tran || "-"}
                             </td>
-                            <td className="max-w-[280px] sm:max-w-[400px] px-3 py-2.5 text-slate-800 truncate" title={item.Ket}>
+                            <td
+                              className="max-w-[320px] lg:max-w-[460px] px-3 py-2.5 text-slate-800 truncate"
+                              title={item.Ket}
+                            >
                               {item.Ket || "-"}
                             </td>
-                            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-600">
+                            <td className="px-3 py-2.5 text-right font-mono font-bold text-rose-600 whitespace-nowrap">
                               {formatAmount(item.Jumlah)}
                             </td>
                           </tr>
@@ -423,7 +567,7 @@ export default function BiayaOperasionalPage() {
                         <td colSpan={3} className="px-3 py-3 text-left">
                           GRAND TOTAL KESELURUHAN BIAYA
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-rose-600">
+                        <td className="px-3 py-3 text-right font-mono text-rose-600 whitespace-nowrap">
                           {formatAmount(grandTotalBiaya)}
                         </td>
                       </tr>
@@ -432,6 +576,7 @@ export default function BiayaOperasionalPage() {
                 </div>
               </div>
 
+              {/* Pagination */}
               <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:flex-row sm:p-4">
                 <div className="flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
                   <span>Tampilkan:</span>
