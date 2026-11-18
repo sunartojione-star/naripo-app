@@ -328,7 +328,7 @@ export default function Header() {
         <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16 gap-2">
             {/* SISI KIRI: LOGO + NAMA KOPERASI + MENU PC */}
-            <div className="flex items-center min-w-0 gap-3 lg:gap-5">
+            <div className="flex items-center min-w-0 flex-1 gap-3 xl:gap-5">
               <Link
                 href="/"
                 className="flex items-center gap-2 min-w-0 shrink-0"
@@ -338,26 +338,26 @@ export default function Header() {
                   alt="Logo Koperasi Niaga Abadi"
                   className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain shrink-0"
                 />
-                <span className="font-extrabold text-blue-600 text-xs sm:text-sm md:text-base tracking-tight truncate">
+                <span className="font-extrabold text-blue-600 text-xs sm:text-sm xl:text-base tracking-tight truncate">
                   KOPERASI NIAGA ABADI
                 </span>
               </Link>
 
-              {/* MENU HORIZONTAL KHUSUS PC */}
-              <nav className="hidden md:flex items-center gap-1">
+              {/* MENU HORIZONTAL KHUSUS PC (>= 1024px) */}
+              <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1 min-w-0">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                      className={`flex items-center gap-1.5 px-2 xl:px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
                         item.active
                           ? "bg-blue-50 text-blue-700 font-bold"
                           : "text-gray-600 hover:bg-gray-100 hover:text-blue-600"
                       }`}
                     >
-                      <Icon className="w-3.5 h-3.5" />
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
                       <span>{item.fullLabel}</span>
                     </Link>
                   );
@@ -365,7 +365,7 @@ export default function Header() {
               </nav>
             </div>
 
-            {/* SISI KANAN: KERANJANG, AKUN (PC), & HAMBURGER (HP) */}
+            {/* SISI KANAN: KERANJANG, AKUN (PC), & HAMBURGER (HP & TABLET) */}
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
               <Link
                 href="/cart"
@@ -393,8 +393,8 @@ export default function Header() {
                 )}
               </Link>
 
-              {/* TOMBOL AKUN KHUSUS PC */}
-              <div className="hidden md:block relative" ref={desktopProfileRef}>
+              {/* TOMBOL AKUN KHUSUS PC (>= 1024px) */}
+              <div className="hidden lg:block relative" ref={desktopProfileRef}>
                 <button
                   type="button"
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -429,14 +429,14 @@ export default function Header() {
                 )}
               </div>
 
-              {/* TOMBOL HAMBURGER KHUSUS HP */}
+              {/* TOMBOL HAMBURGER KHUSUS HP & TABLET */}
               <button
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(!isMenuOpen);
                   setIsProfileOpen(false);
                 }}
-                className={`md:hidden p-1.5 rounded-xl transition-colors ${
+                className={`lg:hidden p-1.5 rounded-xl transition-colors ${
                   isMenuOpen
                     ? "bg-blue-50 text-blue-600"
                     : "text-gray-700 hover:bg-gray-100"
@@ -453,9 +453,9 @@ export default function Header() {
           </div>
         </div>
 
-        {/* MENU DROPDOWN ATAS KHUSUS HP */}
+        {/* MENU DROPDOWN ATAS KHUSUS HP & TABLET */}
         {isMenuOpen && (
-          <div className="md:hidden bg-white border-t border-gray-100 px-3 py-2.5 space-y-1 shadow-lg">
+          <div className="lg:hidden bg-white border-t border-gray-100 px-3 py-2.5 space-y-1 shadow-lg">
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -489,8 +489,8 @@ export default function Header() {
         )}
       </header>
 
-      {/* BOTTOM NAVIGATION BAR PERMANEN KHUSUS HP */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)]">
+      {/* BOTTOM NAVIGATION BAR PERMANEN KHUSUS HP & TABLET */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)]">
         <div className="max-w-7xl mx-auto flex items-center justify-around h-14 px-1">
           {navItems.map((item) => {
             const Icon = item.icon;

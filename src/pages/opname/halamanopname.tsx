@@ -66,7 +66,7 @@ export default function HalamanOpname() {
   const [pengawas, setPengawas] = useState<string>("");
   const [catatan, setCatatan] = useState<string>("-");
 
-  // Detail / Grid Items State (700 baris untuk PC)
+  // Detail / Grid Items State
   const [items, setItems] = useState<DetailItem[]>([]);
 
   // Ref Tabel & Input
@@ -142,22 +142,6 @@ export default function HalamanOpname() {
     };
   }, []);
 
-  const generateInitialRows = () => {
-    const initial: DetailItem[] = [];
-    for (let i = 1; i <= 700; i++) {
-      initial.push({
-        no_urut: i,
-        kd_br: "",
-        nama_br: "",
-        satuan: "",
-        hpp: 0,
-        qty: 0,
-        sub_total: 0,
-      });
-    }
-    setItems(initial);
-  };
-
   // Load data dari localStorage saat pertama kali dimuat
   useEffect(() => {
     setIsMounted(true);
@@ -171,19 +155,19 @@ export default function HalamanOpname() {
         setPenghitung(parsed.penghitung || "");
         setPengawas(parsed.pengawas || "");
         setCatatan(parsed.catatan || "-");
-        if (
-          parsed.items &&
-          Array.isArray(parsed.items) &&
-          parsed.items.length > 0
-        ) {
-          setItems(parsed.items);
-          return;
+        if (parsed.items && Array.isArray(parsed.items)) {
+          const filledOnly = parsed.items
+            .filter((it: DetailItem) => it.kd_br && it.kd_br.trim() !== "")
+            .map((it: DetailItem, idx: number) => ({
+              ...it,
+              no_urut: idx + 1,
+            }));
+          setItems(filledOnly);
         }
       } catch (e) {
         console.error("Gagal parsing localStorage draft:", e);
       }
     }
-    generateInitialRows();
   }, []);
 
   // Simpan otomatis ke localStorage setiap ada perubahan
@@ -294,18 +278,13 @@ export default function HalamanOpname() {
     } catch (e) {}
   };
 
-  // Logika Tambah Barang ke Baris Kosong Berikutnya
+  // Tambah Barang ke Keranjang Opname (Muncul hanya saat diketik/scan)
   const addItemToKeranjang = (barang: Barang) => {
     let targetIndex = -1;
 
     setItems((prev) => {
-      const updated = [...prev];
       const hpp = getBarangHppTerakhir(barang);
-
-      const emptyIdx = updated.findIndex(
-        (it) => !it.kd_br || it.kd_br.trim() === ""
-      );
-      targetIndex = emptyIdx !== -1 ? emptyIdx : updated.length;
+      targetIndex = prev.length;
 
       const newItem: DetailItem = {
         no_urut: targetIndex + 1,
@@ -317,12 +296,7 @@ export default function HalamanOpname() {
         sub_total: hpp * 1,
       };
 
-      if (emptyIdx !== -1) {
-        updated[emptyIdx] = newItem;
-      } else {
-        updated.push(newItem);
-      }
-      return updated;
+      return [...prev, newItem];
     });
 
     setQuickKeyword("");
@@ -524,19 +498,11 @@ export default function HalamanOpname() {
 
   const handleClearCurrentRow = () => {
     if (selectedItemIndex === null) return;
-    setItems((prev) => {
-      const updated = [...prev];
-      updated[selectedItemIndex] = {
-        ...updated[selectedItemIndex],
-        kd_br: "",
-        nama_br: "",
-        satuan: "",
-        hpp: 0,
-        qty: 0,
-        sub_total: 0,
-      };
-      return updated;
-    });
+    setItems((prev) =>
+      prev
+        .filter((_, idx) => idx !== selectedItemIndex)
+        .map((item, idx) => ({ ...item, no_urut: idx + 1 }))
+    );
     setShowActionModal(false);
     setSelectedItemIndex(null);
     focusQuickInput();
@@ -574,13 +540,7 @@ export default function HalamanOpname() {
   };
 
   const grandTotal = items.reduce((acc, curr) => acc + curr.sub_total, 0);
-  const filledItemsWithIndex = items
-    .map((item, idx) => ({ item, idx }))
-    .filter(({ item }) => item.kd_br && item.kd_br.trim() !== "");
-  const totalQty = filledItemsWithIndex.reduce(
-    (acc, { item }) => acc + (item.qty || 0),
-    0
-  );
+  const totalQty = items.reduce((acc, item) => acc + (item.qty || 0), 0);
 
   const handleSimpan = async () => {
     const token = localStorage.getItem("token");
@@ -603,8 +563,7 @@ export default function HalamanOpname() {
       return;
     }
 
-    const validItems = items.filter((item) => item.kd_br.trim() !== "");
-    if (validItems.length === 0) {
+    if (items.length === 0) {
       alert("Belum ada item barang yang diinput pada tabel opname!");
       return;
     }
@@ -618,8 +577,8 @@ export default function HalamanOpname() {
         penghitung: penghitung.trim().toUpperCase(),
         pengawas: pengawas.trim().toUpperCase(),
         ket: catatan,
-        items: validItems.map((item) => ({
-          no_urut: item.no_urut,
+        items: items.map((item, idx) => ({
+          no_urut: idx + 1,
           kd_br: item.kd_br,
           nama_br: item.nama_br,
           satuan: item.satuan,
@@ -644,7 +603,7 @@ export default function HalamanOpname() {
       if (res.ok && result?.success) {
         alert("Stok Opname berhasil disimpan!");
         localStorage.removeItem("opname_draft_data");
-        generateInitialRows();
+        setItems([]);
         setNoBuku("");
         setNoBukuExists(false);
         setCatatan("-");
@@ -676,7 +635,7 @@ export default function HalamanOpname() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 sm:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
+      <div className="max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 lg:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
         {/* Header Title (Ikut tergulung ke atas saat di-scroll) */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -886,22 +845,22 @@ export default function HalamanOpname() {
           </div>
         </div>
 
-        {/* Info Jumlah Barang Dihitung (HP & PC) */}
+        {/* Info Jumlah Barang Dihitung (HP, Tablet, & PC) */}
         <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-300 px-1 mb-2">
           <span>Daftar Barang Dihitung</span>
           <span className="font-bold text-blue-400">
-            {filledItemsWithIndex.length} Item ({formatAngka(totalQty)} Qty)
+            {items.length} Item ({formatAngka(totalQty)} Qty)
           </span>
         </div>
 
-        {/* TAMPILAN HP: Daftar Kartu Opname Pas Layar HP (Tanpa Terpotong) */}
+        {/* TAMPILAN HP: Daftar Kartu Opname Pas Layar HP */}
         <div className="md:hidden space-y-2 mb-4">
-          {filledItemsWithIndex.length === 0 ? (
+          {items.length === 0 ? (
             <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 text-center text-xs text-slate-400">
               Belum ada barang. Scan barcode atau ketik nama/kode di atas.
             </div>
           ) : (
-            filledItemsWithIndex.map(({ item, idx }) => (
+            items.map((item, idx) => (
               <div
                 key={`m-${item.kd_br}-${idx}`}
                 onClick={() => handleOpenActionModal(idx)}
@@ -911,7 +870,7 @@ export default function HalamanOpname() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-[10px] font-mono">
                       <span className="font-bold text-blue-400">
-                        #{item.no_urut}
+                        #{idx + 1}
                       </span>
                       <span className="text-blue-300 font-semibold">
                         {item.kd_br}
@@ -987,7 +946,7 @@ export default function HalamanOpname() {
           )}
         </div>
 
-        {/* TAMPILAN PC: Tabel Grid Detail Opname (700 Baris Seperti Semula) */}
+        {/* TAMPILAN TABLET & PC: Tabel Grid Detail Opname (Hanya Muncul Barang yang Diinput) */}
         <div
           ref={tableContainerRef}
           tabIndex={0}
@@ -1018,32 +977,36 @@ export default function HalamanOpname() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item, index) => {
-                const hasItem = Boolean(item.kd_br && item.kd_br.trim() !== "");
-                return (
+              {items.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="p-6 text-center text-slate-400 text-xs md:text-sm"
+                  >
+                    Belum ada barang. Scan barcode atau ketik nama/kode di atas.
+                  </td>
+                </tr>
+              ) : (
+                items.map((item, idx) => (
                   <tr
-                    key={index}
-                    onClick={() => hasItem && handleOpenActionModal(index)}
-                    className={`transition-colors ${
-                      hasItem
-                        ? "hover:bg-slate-800 cursor-pointer"
-                        : "bg-slate-900/40"
-                    }`}
+                    key={`${item.kd_br}-${idx}`}
+                    onClick={() => handleOpenActionModal(idx)}
+                    className="hover:bg-slate-800 cursor-pointer transition-colors"
                   >
                     <td className="p-2 border border-slate-700 text-center bg-slate-800 text-blue-400 font-bold">
-                      {item.no_urut}
+                      {idx + 1}
                     </td>
                     <td
                       className="p-2 border border-slate-700 text-blue-300 font-mono"
-                      title={hasItem ? "Klik untuk edit/hapus" : ""}
+                      title="Klik untuk edit/hapus"
                     >
-                      {item.kd_br || ""}
+                      {item.kd_br}
                     </td>
                     <td
                       className="p-2 border border-slate-700 truncate max-w-xs"
-                      title={item.nama_br || ""}
+                      title={item.nama_br}
                     >
-                      {item.nama_br || ""}
+                      {item.nama_br}
                     </td>
                     <td className="p-2 border border-slate-700 text-center text-slate-300">
                       {item.satuan || "-"}
@@ -1057,7 +1020,7 @@ export default function HalamanOpname() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleQtyAdjust(index, -1);
+                            handleQtyAdjust(idx, -1);
                           }}
                           className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
                           title="Kurangi 1"
@@ -1075,7 +1038,7 @@ export default function HalamanOpname() {
                         >
                           <input
                             ref={(el) => {
-                              qtyInputRefs.current[index] = el;
+                              qtyInputRefs.current[idx] = el;
                             }}
                             type="text"
                             inputMode="numeric"
@@ -1084,7 +1047,7 @@ export default function HalamanOpname() {
                             value={item.qty}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) =>
-                              handleQtyChange(index, e.target.value)
+                              handleQtyChange(idx, e.target.value)
                             }
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.keyCode === 13) {
@@ -1101,7 +1064,7 @@ export default function HalamanOpname() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleQtyAdjust(index, 1);
+                            handleQtyAdjust(idx, 1);
                           }}
                           className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
                           title="Tambah 1"
@@ -1114,8 +1077,8 @@ export default function HalamanOpname() {
                       {formatAngka(item.sub_total)}
                     </td>
                   </tr>
-                );
-              })}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1135,7 +1098,7 @@ export default function HalamanOpname() {
           </div>
           <div className="bg-black border border-slate-700 p-2.5 sm:p-4 rounded-xl text-right">
             <span className="text-[10px] sm:text-xs text-slate-400 font-bold block mb-0.5">
-              {filledItemsWithIndex.length} ITEM ({formatAngka(totalQty)} QTY) • GRAND TOTAL (Rp) :
+              {items.length} ITEM ({formatAngka(totalQty)} QTY) • GRAND TOTAL (Rp) :
             </span>
             <span className="text-xl sm:text-3xl font-extrabold text-fuchsia-400 font-mono">
               {formatAngka(grandTotal)}
