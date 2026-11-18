@@ -44,7 +44,6 @@ const getBarangHppTerakhir = (barang: Barang): number => {
     barang.h_beli ??
     barang.harga_beli ??
     barang.hpp ??
-    barang.h_anggota ??
     0;
   const num = typeof raw === "string" ? parseFloat(raw) : Number(raw);
   return Number.isFinite(num) ? num : 0;
@@ -573,6 +572,7 @@ export default function HalamanOpname() {
       const payload = {
         no_buku: cleanNoBuku,
         tanggal: tanggal,
+        tgl_opname: tanggal,
         penulis: penulis.trim().toUpperCase(),
         penghitung: penghitung.trim().toUpperCase(),
         pengawas: pengawas.trim().toUpperCase(),
@@ -583,6 +583,7 @@ export default function HalamanOpname() {
           nama_br: item.nama_br,
           satuan: item.satuan,
           hpp: item.hpp,
+          nilai: item.hpp,
           qty: item.qty,
           sub_total: item.sub_total,
         })),
