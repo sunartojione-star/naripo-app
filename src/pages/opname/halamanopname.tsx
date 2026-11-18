@@ -12,6 +12,7 @@ import {
   FiX,
   FiCamera,
   FiAlertTriangle,
+  FiDownload,
 } from "react-icons/fi";
 
 interface Barang {
@@ -67,11 +68,15 @@ export default function HalamanOpname() {
 
   // Detail / Grid Items State
   const [items, setItems] = useState<DetailItem[]>([]);
+  const [focusedMobileQtyIndex, setFocusedMobileQtyIndex] = useState<
+    number | null
+  >(null);
 
-  // Ref Tabel & Input
+  // Ref Tabel & Input (Pisah antara HP dan PC agar .focus() tidak salah sasaran)
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const quickInputRef = useRef<HTMLInputElement>(null);
-  const qtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const mobileQtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const desktopQtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Input Cepat / Barcode Scanner di Atas Keranjang State
   const [quickKeyword, setQuickKeyword] = useState<string>("");
@@ -99,8 +104,8 @@ export default function HalamanOpname() {
     return Math.round(num).toLocaleString("id-ID");
   };
 
-  const focusQuickInput = () => {
-    setTimeout(() => {
+  const focusQuickInput = (immediate = false) => {
+    const run = () => {
       if (quickInputRef.current) {
         quickInputRef.current.focus();
         quickInputRef.current.select();
@@ -109,7 +114,12 @@ export default function HalamanOpname() {
           block: "center",
         });
       }
-    }, 50);
+    };
+    if (immediate) {
+      run();
+    } else {
+      setTimeout(run, 50);
+    }
   };
 
   // Navigasi Keyboard Page Up & Page Down untuk Laptop
@@ -279,37 +289,41 @@ export default function HalamanOpname() {
 
   // Tambah Barang ke Keranjang Opname (Muncul hanya saat diketik/scan)
   const addItemToKeranjang = (barang: Barang) => {
-    let targetIndex = -1;
+    const targetIndex = items.length;
+    const hpp = getBarangHppTerakhir(barang);
 
-    setItems((prev) => {
-      const hpp = getBarangHppTerakhir(barang);
-      targetIndex = prev.length;
+    const newItem: DetailItem = {
+      no_urut: targetIndex + 1,
+      kd_br: barang.kd_br,
+      nama_br: barang.nama,
+      satuan: barang.satuan,
+      hpp: hpp,
+      qty: 1,
+      sub_total: hpp * 1,
+    };
 
-      const newItem: DetailItem = {
-        no_urut: targetIndex + 1,
-        kd_br: barang.kd_br,
-        nama_br: barang.nama,
-        satuan: barang.satuan,
-        hpp: hpp,
-        qty: 1,
-        sub_total: hpp * 1,
-      };
-
-      return [...prev, newItem];
-    });
-
+    setItems((prev) => [...prev, newItem]);
     setQuickKeyword("");
     setQuickResults([]);
     setShowQuickDropdown(false);
+    setFocusedMobileQtyIndex(targetIndex);
 
     setTimeout(() => {
-      if (targetIndex !== -1 && qtyInputRefs.current[targetIndex]) {
-        const inputEl = qtyInputRefs.current[targetIndex];
-        inputEl?.focus();
-        inputEl?.select();
-        inputEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const isMobile =
+        typeof window !== "undefined" && window.innerWidth < 768;
+      const inputEl = isMobile
+        ? mobileQtyInputRefs.current[targetIndex]
+        : desktopQtyInputRefs.current[targetIndex];
+
+      if (inputEl) {
+        inputEl.focus();
+        inputEl.select();
+        try {
+          inputEl.setSelectionRange(0, String(inputEl.value || "").length);
+        } catch {}
+        inputEl.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-    }, 80);
+    }, 60);
   };
 
   // Live Search & Scan dengan Alat Barcode di Laptop
@@ -502,9 +516,10 @@ export default function HalamanOpname() {
         .filter((_, idx) => idx !== selectedItemIndex)
         .map((item, idx) => ({ ...item, no_urut: idx + 1 }))
     );
+    setFocusedMobileQtyIndex(null);
     setShowActionModal(false);
     setSelectedItemIndex(null);
-    focusQuickInput();
+    focusQuickInput(true);
   };
 
   const handleQtyChange = (index: number, val: string) => {
@@ -540,6 +555,23 @@ export default function HalamanOpname() {
 
   const grandTotal = items.reduce((acc, curr) => acc + curr.sub_total, 0);
   const totalQty = items.reduce((acc, item) => acc + (item.qty || 0), 0);
+
+  const handleDownloadPdf = () => {
+    if (items.length === 0) {
+      alert("Belum ada item barang untuk diunduh sebagai PDF.");
+      return;
+    }
+    const prevTitle = document.title;
+    const safeNoBuku = (noBuku.trim().toUpperCase() || "DRAFT").replace(
+      /\s+/g,
+      "_"
+    );
+    document.title = `Opname_${safeNoBuku}_${tanggal}`;
+    window.print();
+    setTimeout(() => {
+      document.title = prevTitle;
+    }, 500);
+  };
 
   const handleSimpan = async () => {
     const token = localStorage.getItem("token");
@@ -605,6 +637,7 @@ export default function HalamanOpname() {
         alert("Stok Opname berhasil disimpan!");
         localStorage.removeItem("opname_draft_data");
         setItems([]);
+        setFocusedMobileQtyIndex(null);
         setNoBuku("");
         setNoBukuExists(false);
         setCatatan("-");
@@ -636,7 +669,27 @@ export default function HalamanOpname() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 lg:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm;
+          }
+          header,
+          nav,
+          footer,
+          .no-print {
+            display: none !important;
+          }
+          body {
+            background: #ffffff !important;
+            color: #000000 !important;
+          }
+        }
+      `}</style>
+
+      {/* TAMPILAN LAYAR NORMAL */}
+      <div className="no-print max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 lg:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
         {/* Header Title (Ikut tergulung ke atas saat di-scroll) */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -906,24 +959,38 @@ export default function HalamanOpname() {
                     >
                       <FiMinus className="w-3 h-3" />
                     </button>
-                    <input
-                      ref={(el) => {
-                        qtyInputRefs.current[idx] = el;
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        setFocusedMobileQtyIndex(null);
+                        focusQuickInput(true);
                       }}
-                      type="text"
-                      inputMode="numeric"
-                      enterKeyHint="done"
-                      maxLength={4}
-                      value={item.qty}
-                      onChange={(e) => handleQtyChange(idx, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.keyCode === 13) {
-                          e.preventDefault();
-                          focusQuickInput();
-                        }
-                      }}
-                      className="w-11 h-7 bg-slate-950 text-center text-white rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-xs font-bold"
-                    />
+                      className="inline-block"
+                    >
+                      <input
+                        ref={(el) => {
+                          mobileQtyInputRefs.current[idx] = el;
+                        }}
+                        type="text"
+                        inputMode="numeric"
+                        enterKeyHint="done"
+                        maxLength={4}
+                        value={item.qty}
+                        onFocus={(e) => {
+                          setFocusedMobileQtyIndex(idx);
+                          e.target.select();
+                        }}
+                        onChange={(e) => handleQtyChange(idx, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.keyCode === 13) {
+                            e.preventDefault();
+                            setFocusedMobileQtyIndex(null);
+                            focusQuickInput(true);
+                          }
+                        }}
+                        className="w-11 h-7 bg-slate-950 text-center text-white rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-xs font-bold"
+                      />
+                    </form>
                     <button
                       type="button"
                       onClick={() => handleQtyAdjust(idx, 1)}
@@ -942,6 +1009,22 @@ export default function HalamanOpname() {
                     </span>
                   </div>
                 </div>
+
+                {focusedMobileQtyIndex === idx && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFocusedMobileQtyIndex(null);
+                      focusQuickInput(true);
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1.5 shadow-md transition"
+                  >
+                    <FiCheckCircle className="w-4 h-4" />
+                    Selesai
+                  </button>
+                )}
               </div>
             ))
           )}
@@ -1032,14 +1115,14 @@ export default function HalamanOpname() {
                         <form
                           onSubmit={(e) => {
                             e.preventDefault();
-                            focusQuickInput();
+                            focusQuickInput(true);
                           }}
                           className="inline-block"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <input
                             ref={(el) => {
-                              qtyInputRefs.current[idx] = el;
+                              desktopQtyInputRefs.current[idx] = el;
                             }}
                             type="text"
                             inputMode="numeric"
@@ -1047,13 +1130,14 @@ export default function HalamanOpname() {
                             maxLength={4}
                             value={item.qty}
                             onClick={(e) => e.stopPropagation()}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) =>
                               handleQtyChange(idx, e.target.value)
                             }
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.keyCode === 13) {
                                 e.preventDefault();
-                                focusQuickInput();
+                                focusQuickInput(true);
                               }
                             }}
                             className="w-12 bg-slate-900 text-center text-white py-0.5 rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1107,15 +1191,26 @@ export default function HalamanOpname() {
           </div>
         </div>
 
-        {/* Tombol Simpan */}
-        <div className="flex items-center gap-4">
+        {/* Tombol Simpan & Download PDF */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
           <button
+            type="button"
             onClick={handleSimpan}
             disabled={loading || noBukuExists}
             className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow transition text-sm sm:text-base"
           >
             <FiSave className="w-4 h-4 sm:w-5 sm:h-5" />
             {loading ? "Menyimpan..." : "Simpan Opname"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={items.length === 0}
+            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow transition text-sm sm:text-base"
+          >
+            <FiDownload className="w-4 h-4 sm:w-5 sm:h-5" />
+            Download PDF
           </button>
         </div>
 
@@ -1218,7 +1313,7 @@ export default function HalamanOpname() {
                       onSubmit={(e) => {
                         e.preventDefault();
                         setShowActionModal(false);
-                        focusQuickInput();
+                        focusQuickInput(true);
                       }}
                       className="inline-block"
                       onClick={(e) => e.stopPropagation()}
@@ -1229,6 +1324,7 @@ export default function HalamanOpname() {
                         enterKeyHint="done"
                         maxLength={4}
                         value={currentSelectedItem.qty}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) =>
                           handleQtyChange(selectedItemIndex, e.target.value)
                         }
@@ -1236,7 +1332,7 @@ export default function HalamanOpname() {
                           if (e.key === "Enter" || e.keyCode === 13) {
                             e.preventDefault();
                             setShowActionModal(false);
-                            focusQuickInput();
+                            focusQuickInput(true);
                           }
                         }}
                         className="w-24 h-12 bg-slate-950 text-center text-white rounded-xl border-2 border-fuchsia-600 focus:outline-none focus:border-white font-mono text-xl font-bold"
@@ -1273,7 +1369,7 @@ export default function HalamanOpname() {
                   type="button"
                   onClick={() => {
                     setShowActionModal(false);
-                    focusQuickInput();
+                    focusQuickInput(true);
                   }}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm shadow-md active:scale-95"
                 >
@@ -1284,6 +1380,140 @@ export default function HalamanOpname() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* TAMPILAN KHUSUS DOWNLOAD PDF / CETAK A4 */}
+      <div className="hidden print:block bg-white text-black p-2 text-xs">
+        <div className="border-b-2 border-black pb-2 mb-3 flex justify-between items-start">
+          <div>
+            <h1 className="text-base font-bold uppercase tracking-wide">
+              KOPERASI NIAGA ABADI RIDHOTULLAH
+            </h1>
+            <p className="text-xs font-semibold">
+              LAPORAN STOK OPNAME MASTER BARANG
+            </p>
+          </div>
+          <div className="text-right text-[11px]">
+            <div>
+              <span className="font-semibold">No Buku:</span>{" "}
+              {noBuku.trim().toUpperCase() || "-"}
+            </div>
+            <div>
+              <span className="font-semibold">Tanggal:</span> {tanggal}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 mb-3 text-[11px]">
+          <div>
+            <span className="font-semibold">Penulis:</span>{" "}
+            {penulis.trim().toUpperCase() || "-"}
+          </div>
+          <div>
+            <span className="font-semibold">Penghitung:</span>{" "}
+            {penghitung.trim().toUpperCase() || "-"}
+          </div>
+          <div>
+            <span className="font-semibold">Pengawas:</span>{" "}
+            {pengawas.trim().toUpperCase() || "-"}
+          </div>
+        </div>
+
+        <table className="w-full border-collapse border border-black text-[11px] mb-3">
+          <thead>
+            <tr className="bg-gray-200">
+              <th className="border border-black px-1.5 py-1 text-center w-8">
+                NO
+              </th>
+              <th className="border border-black px-1.5 py-1 text-left w-24">
+                KODE
+              </th>
+              <th className="border border-black px-1.5 py-1 text-left">
+                NAMA BARANG
+              </th>
+              <th className="border border-black px-1.5 py-1 text-center w-14">
+                SAT
+              </th>
+              <th className="border border-black px-1.5 py-1 text-right w-24">
+                HPP
+              </th>
+              <th className="border border-black px-1.5 py-1 text-center w-14">
+                QTY
+              </th>
+              <th className="border border-black px-1.5 py-1 text-right w-28">
+                SUB TOTAL
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <tr key={`print-${item.kd_br}-${idx}`}>
+                <td className="border border-black px-1.5 py-1 text-center">
+                  {idx + 1}
+                </td>
+                <td className="border border-black px-1.5 py-1 font-mono">
+                  {item.kd_br}
+                </td>
+                <td className="border border-black px-1.5 py-1">
+                  {item.nama_br}
+                </td>
+                <td className="border border-black px-1.5 py-1 text-center">
+                  {item.satuan || "-"}
+                </td>
+                <td className="border border-black px-1.5 py-1 text-right font-mono">
+                  {formatAngka(item.hpp)}
+                </td>
+                <td className="border border-black px-1.5 py-1 text-center font-mono">
+                  {item.qty}
+                </td>
+                <td className="border border-black px-1.5 py-1 text-right font-mono font-semibold">
+                  {formatAngka(item.sub_total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-gray-100 font-bold">
+              <td
+                colSpan={5}
+                className="border border-black px-2 py-1.5 text-right"
+              >
+                TOTAL ({items.length} Item)
+              </td>
+              <td className="border border-black px-1.5 py-1.5 text-center font-mono">
+                {formatAngka(totalQty)}
+              </td>
+              <td className="border border-black px-1.5 py-1.5 text-right font-mono">
+                Rp {formatAngka(grandTotal)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div className="text-[11px] mb-6">
+          <span className="font-semibold">Catatan:</span> {catatan || "-"}
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 text-center text-[11px] pt-2">
+          <div>
+            <p className="mb-12">Penulis,</p>
+            <p className="font-semibold border-t border-black pt-1 mx-4">
+              {penulis.trim().toUpperCase() || "...................."}
+            </p>
+          </div>
+          <div>
+            <p className="mb-12">Penghitung,</p>
+            <p className="font-semibold border-t border-black pt-1 mx-4">
+              {penghitung.trim().toUpperCase() || "...................."}
+            </p>
+          </div>
+          <div>
+            <p className="mb-12">Pengawas,</p>
+            <p className="font-semibold border-t border-black pt-1 mx-4">
+              {pengawas.trim().toUpperCase() || "...................."}
+            </p>
+          </div>
+        </div>
       </div>
     </Layout>
   );
