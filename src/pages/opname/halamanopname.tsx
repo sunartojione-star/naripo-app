@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import {
   FiPlus,
@@ -12,13 +11,19 @@ import {
   FiCheckCircle,
   FiX,
   FiCamera,
+  FiAlertTriangle,
 } from "react-icons/fi";
 
 interface Barang {
   kd_br: string;
   nama: string;
   satuan: string;
-  h_anggota: number;
+  hpp_terakhir?: number | string;
+  hpp_akhir?: number | string;
+  h_beli?: number | string;
+  harga_beli?: number | string;
+  hpp?: number | string;
+  h_anggota?: number | string;
   barcode?: string;
 }
 
@@ -32,13 +37,27 @@ interface DetailItem {
   sub_total: number;
 }
 
+const getBarangHppTerakhir = (barang: Barang): number => {
+  const raw =
+    barang.hpp_terakhir ??
+    barang.hpp_akhir ??
+    barang.h_beli ??
+    barang.harga_beli ??
+    barang.hpp ??
+    barang.h_anggota ??
+    0;
+  const num = typeof raw === "string" ? parseFloat(raw) : Number(raw);
+  return Number.isFinite(num) ? num : 0;
+};
+
 export default function HalamanOpname() {
-  const router = useRouter();
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
   // Header State
   const [noBuku, setNoBuku] = useState<string>("");
+  const [noBukuExists, setNoBukuExists] = useState<boolean>(false);
+  const [checkingNoBuku, setCheckingNoBuku] = useState<boolean>(false);
   const [tanggal, setTanggal] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
@@ -47,7 +66,7 @@ export default function HalamanOpname() {
   const [pengawas, setPengawas] = useState<string>("");
   const [catatan, setCatatan] = useState<string>("-");
 
-  // Detail / Grid Items State (700 baris)
+  // Detail / Grid Items State (700 baris untuk PC)
   const [items, setItems] = useState<DetailItem[]>([]);
 
   // Ref Tabel & Input
@@ -66,13 +85,6 @@ export default function HalamanOpname() {
   const [cameraError, setCameraError] = useState<string>("");
   const html5QrCodeRef = useRef<any>(null);
 
-  // Modal / Pencarian Barang State (Klik Baris Kosong)
-  const [showSearchModal, setShowSearchModal] = useState<boolean>(false);
-  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
-  const [searchKeyword, setSearchKeyword] = useState<string>("");
-  const [barangsList, setBarangsList] = useState<Barang[]>([]);
-  const [searchingBarang, setSearchingBarang] = useState<boolean>(false);
-
   // Modal Popup Edit & Hapus Item saat baris diklik
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [showActionModal, setShowActionModal] = useState<boolean>(false);
@@ -81,7 +93,6 @@ export default function HalamanOpname() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  // Helper Format Angka Titik Rupiah Indonesia (Contoh: 615.000)
   const formatAngka = (val: number | string | undefined | null) => {
     if (!val && val !== 0) return "0";
     const num = typeof val === "string" ? parseFloat(val) : val;
@@ -89,13 +100,15 @@ export default function HalamanOpname() {
     return Math.round(num).toLocaleString("id-ID");
   };
 
-  // Fungsi Fokus Kembali ke Input Scan Barcode (Bekerja di PC & HP/Tablet)
   const focusQuickInput = () => {
     setTimeout(() => {
       if (quickInputRef.current) {
         quickInputRef.current.focus();
         quickInputRef.current.select();
-        quickInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        quickInputRef.current.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
       }
     }, 50);
   };
@@ -103,7 +116,7 @@ export default function HalamanOpname() {
   // Navigasi Keyboard Page Up & Page Down untuk Laptop
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showActionModal || showSearchModal || showCameraModal) return;
+      if (showActionModal || showCameraModal) return;
 
       if (e.key === "PageDown") {
         e.preventDefault();
@@ -116,7 +129,7 @@ export default function HalamanOpname() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showActionModal, showSearchModal, showCameraModal]);
+  }, [showActionModal, showCameraModal]);
 
   // Bersihkan stream kamera jika komponen di-unmount
   useEffect(() => {
@@ -128,6 +141,22 @@ export default function HalamanOpname() {
       }
     };
   }, []);
+
+  const generateInitialRows = () => {
+    const initial: DetailItem[] = [];
+    for (let i = 1; i <= 700; i++) {
+      initial.push({
+        no_urut: i,
+        kd_br: "",
+        nama_br: "",
+        satuan: "",
+        hpp: 0,
+        qty: 0,
+        sub_total: 0,
+      });
+    }
+    setItems(initial);
+  };
 
   // Load data dari localStorage saat pertama kali dimuat
   useEffect(() => {
@@ -181,23 +210,73 @@ export default function HalamanOpname() {
     isMounted,
   ]);
 
-  const generateInitialRows = () => {
-    const initial: DetailItem[] = [];
-    for (let i = 1; i <= 700; i++) {
-      initial.push({
-        no_urut: i,
-        kd_br: "",
-        nama_br: "",
-        satuan: "",
-        hpp: 0,
-        qty: 0,
-        sub_total: 0,
-      });
+  // Cek duplikat No Buku ke backend secara otomatis saat diketik
+  const checkDuplicateNoBuku = async (rawVal: string): Promise<boolean> => {
+    const normalized = rawVal.trim().toUpperCase();
+    if (!normalized) {
+      setNoBukuExists(false);
+      return false;
     }
-    setItems(initial);
+
+    const token = localStorage.getItem("token");
+    if (!token) return false;
+
+    setCheckingNoBuku(true);
+    try {
+      const res = await fetch(
+        `${apiUrl}/master-opname?no_buku=${encodeURIComponent(normalized)}`,
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        setNoBukuExists(false);
+        return false;
+      }
+
+      const json = await res.json().catch(() => null);
+      const list = json?.data ?? json;
+
+      let exists = false;
+      if (typeof json?.exists === "boolean") {
+        exists = json.exists;
+      } else if (Array.isArray(list)) {
+        exists = list.some(
+          (row: any) =>
+            String(row?.no_buku || "")
+              .trim()
+              .toUpperCase() === normalized
+        );
+      }
+
+      setNoBukuExists(exists);
+      return exists;
+    } catch {
+      return false;
+    } finally {
+      setCheckingNoBuku(false);
+    }
   };
 
-  // Suara Beep saat Kamera Berhasil Scan Barcode
+  useEffect(() => {
+    if (!isMounted) return;
+    const normalized = noBuku.trim();
+    if (!normalized) {
+      setNoBukuExists(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      checkDuplicateNoBuku(normalized);
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [noBuku, isMounted]);
+
   const playBeep = () => {
     try {
       const audioCtx = new (window.AudioContext ||
@@ -215,18 +294,14 @@ export default function HalamanOpname() {
     } catch (e) {}
   };
 
-  // Logika Tambah Barang ke Baris Kosong Berikutnya (Tanpa Menggabung ke Atas)
+  // Logika Tambah Barang ke Baris Kosong Berikutnya
   const addItemToKeranjang = (barang: Barang) => {
     let targetIndex = -1;
 
     setItems((prev) => {
       const updated = [...prev];
-      const hpp =
-        typeof barang.h_anggota === "string"
-          ? parseFloat(barang.h_anggota)
-          : (barang.h_anggota || 0);
+      const hpp = getBarangHppTerakhir(barang);
 
-      // Selalu cari baris kosong pertama (tidak menggabungkan ke baris atas yang sudah ada)
       const emptyIdx = updated.findIndex(
         (it) => !it.kd_br || it.kd_br.trim() === ""
       );
@@ -254,7 +329,6 @@ export default function HalamanOpname() {
     setQuickResults([]);
     setShowQuickDropdown(false);
 
-    // Otomatis kursor fokus ke kolom QTY baris baru tersebut
     setTimeout(() => {
       if (targetIndex !== -1 && qtyInputRefs.current[targetIndex]) {
         const inputEl = qtyInputRefs.current[targetIndex];
@@ -265,7 +339,7 @@ export default function HalamanOpname() {
     }, 80);
   };
 
-  // Live Search & Scan dengan Alat Barcode di Laptop (Tanpa Tekan Enter)
+  // Live Search & Scan dengan Alat Barcode di Laptop
   const handleQuickSearchChange = async (keyword: string) => {
     setQuickKeyword(keyword);
     const trimmed = keyword.trim();
@@ -443,73 +517,6 @@ export default function HalamanOpname() {
     }
   };
 
-  // Modal Pencarian Barang (Ketika Klik Baris Kosong)
-  const openSearchModal = (index: number) => {
-    setActiveRowIndex(index);
-    setShowSearchModal(true);
-    setSearchKeyword("");
-    fetchBarangs("");
-  };
-
-  const fetchBarangs = async (keyword: string) => {
-    setSearchingBarang(true);
-    const token = localStorage.getItem("token");
-    try {
-      const res = await fetch(
-        `${apiUrl}/barangs?search=${encodeURIComponent(keyword)}&limit=20`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: token ? `Bearer ${token}` : "",
-          },
-        }
-      );
-      const json = await res.json();
-      if (res.ok) {
-        setBarangsList(json.data || json || []);
-      }
-    } catch (err) {
-      console.error("Gagal ambil barang:", err);
-    } finally {
-      setSearchingBarang(false);
-    }
-  };
-
-  const handleSelectBarangModal = (barang: Barang) => {
-    if (activeRowIndex === null) return;
-    const targetIdx = activeRowIndex;
-    const hpp =
-      typeof barang.h_anggota === "string"
-        ? parseFloat(barang.h_anggota)
-        : (barang.h_anggota || 0);
-
-    setItems((prev) => {
-      const updated = [...prev];
-      const cur = updated[targetIdx];
-      const qty = cur.qty || 1;
-
-      updated[targetIdx] = {
-        ...cur,
-        kd_br: barang.kd_br,
-        nama_br: barang.nama,
-        satuan: barang.satuan,
-        hpp: hpp,
-        qty: qty,
-        sub_total: hpp * qty,
-      };
-      return updated;
-    });
-
-    setShowSearchModal(false);
-    setActiveRowIndex(null);
-
-    setTimeout(() => {
-      const inputEl = qtyInputRefs.current[targetIdx];
-      inputEl?.focus();
-      inputEl?.select();
-    }, 80);
-  };
-
   const handleOpenActionModal = (index: number) => {
     setSelectedItemIndex(index);
     setShowActionModal(true);
@@ -567,6 +574,13 @@ export default function HalamanOpname() {
   };
 
   const grandTotal = items.reduce((acc, curr) => acc + curr.sub_total, 0);
+  const filledItemsWithIndex = items
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => item.kd_br && item.kd_br.trim() !== "");
+  const totalQty = filledItemsWithIndex.reduce(
+    (acc, { item }) => acc + (item.qty || 0),
+    0
+  );
 
   const handleSimpan = async () => {
     const token = localStorage.getItem("token");
@@ -575,8 +589,17 @@ export default function HalamanOpname() {
       return;
     }
 
-    if (!noBuku.trim()) {
+    const cleanNoBuku = noBuku.trim().toUpperCase();
+    if (!cleanNoBuku) {
       alert("Nomor Buku wajib diisi!");
+      return;
+    }
+
+    const isDup = noBukuExists || (await checkDuplicateNoBuku(cleanNoBuku));
+    if (isDup) {
+      alert(
+        `Nomor Buku "${cleanNoBuku}" sudah ada di database! Tidak bisa input nomor buku yang sama.`
+      );
       return;
     }
 
@@ -589,11 +612,11 @@ export default function HalamanOpname() {
     setLoading(true);
     try {
       const payload = {
-        no_buku: noBuku,
+        no_buku: cleanNoBuku,
         tanggal: tanggal,
-        penulis: penulis,
-        penghitung: penghitung,
-        pengawas: pengawas,
+        penulis: penulis.trim().toUpperCase(),
+        penghitung: penghitung.trim().toUpperCase(),
+        pengawas: pengawas.trim().toUpperCase(),
         ket: catatan,
         items: validItems.map((item) => ({
           no_urut: item.no_urut,
@@ -616,17 +639,27 @@ export default function HalamanOpname() {
         body: JSON.stringify(payload),
       });
 
-      const result = await res.json();
+      const result = await res.json().catch(() => null);
 
-      if (res.ok && result.success) {
+      if (res.ok && result?.success) {
         alert("Stok Opname berhasil disimpan!");
         localStorage.removeItem("opname_draft_data");
         generateInitialRows();
         setNoBuku("");
+        setNoBukuExists(false);
         setCatatan("-");
         focusQuickInput();
       } else {
-        alert(result.message || "Gagal menyimpan data opname.");
+        if (res.status === 409 || res.status === 422) {
+          const msg = String(result?.message || "");
+          if (
+            msg.toLowerCase().includes("buku") ||
+            msg.toLowerCase().includes("taken")
+          ) {
+            setNoBukuExists(true);
+          }
+        }
+        alert(result?.message || "Gagal menyimpan data opname.");
       }
     } catch (err: any) {
       console.error("Error simpan opname:", err);
@@ -643,10 +676,10 @@ export default function HalamanOpname() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 bg-slate-900 text-white rounded-xl shadow-2xl">
-        {/* Header Title */}
-        <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-3 sm:mb-6 shadow-md">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+      <div className="max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 sm:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
+        {/* Header Title (Ikut tergulung ke atas saat di-scroll) */}
+        <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <div className="p-2 sm:p-2.5 bg-gradient-to-tr from-blue-700 to-blue-500 rounded-lg text-white shadow-lg shrink-0">
                 <FiClipboard className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -669,196 +702,317 @@ export default function HalamanOpname() {
           </div>
         </div>
 
-        {/* Form Header */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 sm:gap-6 bg-slate-800 p-3 sm:p-5 rounded-xl border border-slate-700 mb-3 sm:mb-6 shadow-md">
-          <div className="space-y-2.5 sm:space-y-4">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <label className="w-24 sm:w-28 font-semibold text-xs sm:text-sm text-slate-300 shrink-0">
-                No Buku :
-              </label>
-              <input
-                type="text"
-                value={noBuku}
-                onChange={(e) => setNoBuku(e.target.value.toUpperCase())}
-                placeholder="BK 01..."
-                className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
-              />
+        {/* STICKY WRAPPER: FORM HEADER + SCAN BARCODE (Menutup Title saat Scroll) */}
+        <div className="sticky top-14 sm:top-16 z-30 bg-slate-900 pt-1 pb-2 -mx-1.5 px-1.5 sm:-mx-4 sm:px-4 shadow-lg">
+          {/* Form Header */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 sm:gap-5 bg-slate-800 p-2.5 sm:p-4 rounded-xl border border-slate-700 mb-2 sm:mb-3 shadow-md">
+            <div className="space-y-1.5 sm:space-y-3">
+              <div>
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                    No Buku :
+                  </label>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="characters"
+                    value={noBuku}
+                    onChange={(e) => setNoBuku(e.target.value)}
+                    onBlur={() => checkDuplicateNoBuku(noBuku)}
+                    placeholder="BK 01..."
+                    className={`flex-1 uppercase bg-slate-900 border rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none text-white font-medium ${
+                      noBukuExists
+                        ? "border-red-500 focus:border-red-400"
+                        : "border-slate-600 focus:border-blue-500"
+                    }`}
+                  />
+                </div>
+                {checkingNoBuku && (
+                  <p className="text-[10px] text-slate-400 mt-0.5 ml-22 sm:ml-32">
+                    Mengecek nomor buku...
+                  </p>
+                )}
+                {noBukuExists && (
+                  <p className="text-[10px] text-red-400 font-semibold mt-0.5 flex items-center gap-1 ml-22 sm:ml-32">
+                    <FiAlertTriangle className="w-3 h-3 shrink-0" />
+                    Nomor buku &quot;{noBuku.trim().toUpperCase()}&quot; sudah terdaftar!
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-4">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                  Tanggal :
+                </label>
+                <input
+                  type="date"
+                  value={tanggal}
+                  onChange={(e) => setTanggal(e.target.value)}
+                  className="flex-1 bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white color-scheme-dark [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                />
+              </div>
+              <div className="flex items-center gap-2 sm:gap-4">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                  Penulis :
+                </label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  value={penulis}
+                  onChange={(e) => setPenulis(e.target.value)}
+                  placeholder="NAMA PENULIS..."
+                  className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-              <label className="w-24 sm:w-28 font-semibold text-xs sm:text-sm text-slate-300 shrink-0">
-                Tanggal :
-              </label>
-              <input
-                type="date"
-                value={tanggal}
-                onChange={(e) => setTanggal(e.target.value)}
-                className="flex-1 bg-slate-900 border border-slate-600 rounded px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white color-scheme-dark [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
-              />
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-              <label className="w-24 sm:w-28 font-semibold text-xs sm:text-sm text-slate-300 shrink-0">
-                Penulis :
-              </label>
-              <input
-                type="text"
-                value={penulis}
-                onChange={(e) => setPenulis(e.target.value.toUpperCase())}
-                placeholder="NAMA PENULIS..."
-                className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
-              />
+
+            <div className="space-y-1.5 sm:space-y-3">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                  Penghitung :
+                </label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  value={penghitung}
+                  onChange={(e) => setPenghitung(e.target.value)}
+                  placeholder="NAMA PENGHITUNG..."
+                  className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
+                />
+              </div>
+              <div className="flex items-center gap-2 sm:gap-4">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                  Pengawas :
+                </label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  value={pengawas}
+                  onChange={(e) => setPengawas(e.target.value)}
+                  placeholder="NAMA PENGAWAS..."
+                  className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2.5 sm:space-y-4">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <label className="w-24 sm:w-28 font-semibold text-xs sm:text-sm text-slate-300 shrink-0">
-                Penghitung :
-              </label>
-              <input
-                type="text"
-                value={penghitung}
-                onChange={(e) => setPenghitung(e.target.value.toUpperCase())}
-                placeholder="NAMA PENGHITUNG..."
-                className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
-              />
+          {/* SCAN BARCODE (RINGKAS & HEMAT RUANG) */}
+          <div className="relative bg-slate-800 p-2 sm:p-3 rounded-xl border border-blue-600/50 shadow-lg">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <FiSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  ref={quickInputRef}
+                  type="text"
+                  value={quickKeyword}
+                  onChange={(e) => handleQuickSearchChange(e.target.value)}
+                  onKeyDown={handleQuickSearchKeyDown}
+                  placeholder="Scan Barcode"
+                  className="w-full bg-slate-950 border-2 border-blue-500/80 rounded-lg pl-8 sm:pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                />
+                {quickKeyword && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickKeyword("");
+                      setShowQuickDropdown(false);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={startCamera}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 sm:py-2 rounded-lg font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition shrink-0 text-xs sm:text-sm"
+                title="Buka Kamera Barcode Scanner (HP)"
+              >
+                <FiCamera className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Kamera</span>
+              </button>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-              <label className="w-24 sm:w-28 font-semibold text-xs sm:text-sm text-slate-300 shrink-0">
-                Pengawas :
-              </label>
-              <input
-                type="text"
-                value={pengawas}
-                onChange={(e) => setPengawas(e.target.value.toUpperCase())}
-                placeholder="NAMA PENGAWAS..."
-                className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
-              />
-            </div>
+
+            {/* Dropdown Rekomendasi Pencarian */}
+            {showQuickDropdown && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-40 max-h-64 overflow-y-auto p-1.5 space-y-1">
+                {quickSearching ? (
+                  <div className="p-2.5 text-center text-slate-400 text-xs">
+                    Mencari barang...
+                  </div>
+                ) : quickResults.length === 0 ? (
+                  <div className="p-2.5 text-center text-slate-400 text-xs">
+                    Barang tidak ditemukan.
+                  </div>
+                ) : (
+                  quickResults.map((b) => (
+                    <div
+                      key={b.kd_br}
+                      onClick={() => addItemToKeranjang(b)}
+                      className="p-2 bg-slate-900/90 hover:bg-blue-900/40 border border-slate-700 hover:border-blue-500 rounded-lg cursor-pointer flex justify-between items-center transition"
+                    >
+                      <div>
+                        <div className="font-mono text-blue-400 text-[11px] flex items-center gap-1.5">
+                          <span className="font-bold">{b.kd_br}</span>
+                          {b.barcode && (
+                            <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
+                              Barcode: {b.barcode}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-white font-medium text-xs line-clamp-1">
+                          {b.nama}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <div className="text-[9px] text-slate-400">
+                          Sat: {b.satuan}
+                        </div>
+                        <div className="text-cyan-400 font-mono text-[11px] font-bold">
+                          {formatAngka(getBarangHppTerakhir(b))}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* SCAN BARCODE & KAMERA SCANNER HP */}
-        <div className="relative mb-3 bg-slate-800 p-2.5 sm:p-4 rounded-xl border border-blue-600/50 shadow-lg">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs sm:text-sm font-bold text-blue-400 flex items-center gap-1.5">
-              <FiSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              Scan Barcode / Input Barang Cepat:
-            </span>
-            <span className="text-[9px] sm:text-[10px] text-slate-400 italic">
-              Laptop (alat scan) / HP (kamera)
-            </span>
-          </div>
+        {/* Info Jumlah Barang Dihitung (HP & PC) */}
+        <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-300 px-1 mb-2">
+          <span>Daftar Barang Dihitung</span>
+          <span className="font-bold text-blue-400">
+            {filledItemsWithIndex.length} Item ({formatAngka(totalQty)} Qty)
+          </span>
+        </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <input
-                ref={quickInputRef}
-                type="text"
-                value={quickKeyword}
-                onChange={(e) => handleQuickSearchChange(e.target.value)}
-                onKeyDown={handleQuickSearchKeyDown}
-                placeholder="Scan barcode alat di sini atau ketik nama/kode..."
-                className="w-full bg-slate-950 border-2 border-blue-500/80 rounded-lg pl-3 pr-9 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
-              />
-              {quickKeyword && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuickKeyword("");
-                    setShowQuickDropdown(false);
-                  }}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
-                >
-                  <FiX className="w-4 h-4" />
-                </button>
-              )}
+        {/* TAMPILAN HP: Daftar Kartu Opname Pas Layar HP (Tanpa Terpotong) */}
+        <div className="md:hidden space-y-2 mb-4">
+          {filledItemsWithIndex.length === 0 ? (
+            <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 text-center text-xs text-slate-400">
+              Belum ada barang. Scan barcode atau ketik nama/kode di atas.
             </div>
-
-            <button
-              type="button"
-              onClick={startCamera}
-              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-2 rounded-lg font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition shrink-0 text-xs sm:text-sm"
-              title="Buka Kamera Barcode Scanner (HP)"
-            >
-              <FiCamera className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">Kamera</span>
-            </button>
-          </div>
-
-          {/* Dropdown Rekomendasi Pencarian */}
-          {showQuickDropdown && (
-            <div className="absolute left-0 right-0 top-full mt-1.5 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-30 max-h-64 overflow-y-auto p-1.5 space-y-1">
-              {quickSearching ? (
-                <div className="p-2.5 text-center text-slate-400 text-xs">
-                  Mencari barang...
-                </div>
-              ) : quickResults.length === 0 ? (
-                <div className="p-2.5 text-center text-slate-400 text-xs">
-                  Barang tidak ditemukan.
-                </div>
-              ) : (
-                quickResults.map((b) => (
-                  <div
-                    key={b.kd_br}
-                    onClick={() => addItemToKeranjang(b)}
-                    className="p-2 bg-slate-900/90 hover:bg-blue-900/40 border border-slate-700 hover:border-blue-500 rounded-lg cursor-pointer flex justify-between items-center transition"
-                  >
-                    <div>
-                      <div className="font-mono text-blue-400 text-[11px] flex items-center gap-1.5">
-                        <span className="font-bold">{b.kd_br}</span>
-                        {b.barcode && (
-                          <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
-                            Barcode: {b.barcode}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-white font-medium text-xs line-clamp-1">
-                        {b.nama}
-                      </div>
+          ) : (
+            filledItemsWithIndex.map(({ item, idx }) => (
+              <div
+                key={`m-${item.kd_br}-${idx}`}
+                onClick={() => handleOpenActionModal(idx)}
+                className="rounded-xl border border-slate-700 bg-slate-800/90 p-2.5 space-y-2 active:bg-slate-800"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                      <span className="font-bold text-blue-400">
+                        #{item.no_urut}
+                      </span>
+                      <span className="text-blue-300 font-semibold">
+                        {item.kd_br}
+                      </span>
+                      <span className="rounded bg-slate-700 px-1.5 py-0.5 text-slate-300">
+                        {item.satuan || "-"}
+                      </span>
                     </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <div className="text-[9px] text-slate-400">
-                        Sat: {b.satuan}
-                      </div>
-                      <div className="text-cyan-400 font-mono text-[11px] font-bold">
-                        {formatAngka(b.h_anggota)}
-                      </div>
-                    </div>
+                    <p className="text-xs font-semibold text-white leading-snug mt-0.5 break-words">
+                      {item.nama_br}
+                    </p>
                   </div>
-                ))
-              )}
-            </div>
+                  <FiEdit2 className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-700/80">
+                  <div className="text-[11px]">
+                    <span className="text-slate-400 block text-[9px]">HPP</span>
+                    <span className="font-mono font-bold text-cyan-300">
+                      {formatAngka(item.hpp)}
+                    </span>
+                  </div>
+
+                  <div
+                    className="flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleQtyAdjust(idx, -1)}
+                      className="bg-slate-900 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center"
+                    >
+                      <FiMinus className="w-3 h-3" />
+                    </button>
+                    <input
+                      ref={(el) => {
+                        qtyInputRefs.current[idx] = el;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      enterKeyHint="done"
+                      maxLength={4}
+                      value={item.qty}
+                      onChange={(e) => handleQtyChange(idx, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.keyCode === 13) {
+                          e.preventDefault();
+                          focusQuickInput();
+                        }
+                      }}
+                      className="w-11 h-7 bg-slate-950 text-center text-white rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-xs font-bold"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleQtyAdjust(idx, 1)}
+                      className="bg-slate-900 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center"
+                    >
+                      <FiPlus className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="text-right text-[11px]">
+                    <span className="text-slate-400 block text-[9px]">
+                      SUB TOTAL
+                    </span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      {formatAngka(item.sub_total)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
           )}
         </div>
 
-        {/* Tabel Grid Detail Opname */}
+        {/* TAMPILAN PC: Tabel Grid Detail Opname (700 Baris Seperti Semula) */}
         <div
           ref={tableContainerRef}
           tabIndex={0}
-          className="overflow-x-auto border border-slate-700 rounded-lg mb-4 max-h-[550px] overflow-y-auto focus:outline-none"
+          className="hidden md:block overflow-x-auto border border-slate-700 rounded-lg mb-4 max-h-[550px] overflow-y-auto focus:outline-none"
         >
-          <table className="w-full text-left border-collapse text-[10px] sm:text-xs md:text-sm">
+          <table className="w-full text-left border-collapse text-xs md:text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-700 text-slate-200">
-                <th className="p-1 sm:p-2 border border-slate-600 w-7 sm:w-10 md:w-14 text-center">
-                  F8
+                <th className="p-2 border border-slate-600 w-14 text-center">
+                  NO
                 </th>
-                <th className="p-1 sm:p-2 border border-slate-600 w-14 sm:w-20 md:w-28">
-                  KODE
-                </th>
-                <th className="p-1 sm:p-2 border border-slate-600 min-w-[75px] sm:min-w-[120px]">
+                <th className="p-2 border border-slate-600 w-28">KODE</th>
+                <th className="p-2 border border-slate-600 min-w-[160px]">
                   NAMA BARANG
                 </th>
-                <th className="p-1 sm:p-2 border border-slate-600 w-8 sm:w-12 md:w-16 text-center">
+                <th className="p-2 border border-slate-600 w-16 text-center">
                   SAT
                 </th>
-                <th className="p-1 sm:p-2 border border-slate-600 w-14 sm:w-20 md:w-28 bg-cyan-900 text-cyan-200 text-right">
+                <th className="p-2 border border-slate-600 w-28 bg-cyan-900 text-cyan-200 text-right">
                   HPP
                 </th>
-                <th className="p-1 sm:p-2 border border-slate-600 w-16 sm:w-24 md:w-32 bg-fuchsia-900 text-fuchsia-200 text-center">
+                <th className="p-2 border border-slate-600 w-32 bg-fuchsia-900 text-fuchsia-200 text-center">
                   QTY
                 </th>
-                <th className="p-1 sm:p-2 border border-slate-600 w-14 sm:w-20 md:w-28 text-right">
+                <th className="p-2 border border-slate-600 w-28 text-right">
                   SUB TOTAL
                 </th>
               </tr>
@@ -869,67 +1023,35 @@ export default function HalamanOpname() {
                 return (
                   <tr
                     key={index}
-                    className="hover:bg-slate-800 transition-colors cursor-pointer"
+                    onClick={() => hasItem && handleOpenActionModal(index)}
+                    className={`transition-colors ${
+                      hasItem
+                        ? "hover:bg-slate-800 cursor-pointer"
+                        : "bg-slate-900/40"
+                    }`}
                   >
-                    <td
-                      onClick={() =>
-                        hasItem
-                          ? handleOpenActionModal(index)
-                          : openSearchModal(index)
-                      }
-                      className="p-1 sm:p-2 border border-slate-700 text-center bg-slate-800 text-blue-400 font-bold"
-                    >
+                    <td className="p-2 border border-slate-700 text-center bg-slate-800 text-blue-400 font-bold">
                       {item.no_urut}
                     </td>
                     <td
-                      onClick={() =>
-                        hasItem
-                          ? handleOpenActionModal(index)
-                          : openSearchModal(index)
-                      }
-                      className="p-1 sm:p-2 border border-slate-700 text-blue-300 font-mono truncate max-w-[65px] sm:max-w-none"
-                      title={hasItem ? "Klik untuk edit/hapus" : "Pilih barang"}
+                      className="p-2 border border-slate-700 text-blue-300 font-mono"
+                      title={hasItem ? "Klik untuk edit/hapus" : ""}
                     >
-                      {item.kd_br || (
-                        <span className="text-slate-500 italic">Pilih...</span>
-                      )}
+                      {item.kd_br || ""}
                     </td>
                     <td
-                      onClick={() =>
-                        hasItem
-                          ? handleOpenActionModal(index)
-                          : openSearchModal(index)
-                      }
-                      className="p-1 sm:p-2 border border-slate-700 truncate max-w-[85px] sm:max-w-xs"
-                      title={item.nama_br || "Klik cari barang"}
+                      className="p-2 border border-slate-700 truncate max-w-xs"
+                      title={item.nama_br || ""}
                     >
-                      {item.nama_br || (
-                        <span className="text-slate-500 italic">
-                          - Klik cari -
-                        </span>
-                      )}
+                      {item.nama_br || ""}
                     </td>
-                    <td
-                      onClick={() =>
-                        hasItem
-                          ? handleOpenActionModal(index)
-                          : openSearchModal(index)
-                      }
-                      className="p-1 sm:p-2 border border-slate-700 text-center text-slate-300"
-                    >
+                    <td className="p-2 border border-slate-700 text-center text-slate-300">
                       {item.satuan || "-"}
                     </td>
-                    <td
-                      onClick={() =>
-                        hasItem
-                          ? handleOpenActionModal(index)
-                          : openSearchModal(index)
-                      }
-                      className="p-1 sm:p-2 border border-slate-700 text-right bg-cyan-950/40 font-mono"
-                    >
+                    <td className="p-2 border border-slate-700 text-right bg-cyan-950/40 font-mono">
                       {formatAngka(item.hpp)}
                     </td>
-                    <td className="p-0.5 sm:p-1.5 border border-slate-700 bg-fuchsia-950/40 text-center">
+                    <td className="p-1.5 border border-slate-700 bg-fuchsia-950/40 text-center">
                       <div className="flex items-center justify-center gap-0.5">
                         <button
                           type="button"
@@ -937,10 +1059,10 @@ export default function HalamanOpname() {
                             e.stopPropagation();
                             handleQtyAdjust(index, -1);
                           }}
-                          className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-4 h-5 sm:w-5 sm:h-6 md:w-6 md:h-7 flex items-center justify-center text-[10px] shrink-0"
+                          className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
                           title="Kurangi 1"
                         >
-                          <FiMinus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                          <FiMinus className="w-3 h-3" />
                         </button>
 
                         <form
@@ -961,14 +1083,16 @@ export default function HalamanOpname() {
                             maxLength={4}
                             value={item.qty}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => handleQtyChange(index, e.target.value)}
+                            onChange={(e) =>
+                              handleQtyChange(index, e.target.value)
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.keyCode === 13) {
                                 e.preventDefault();
                                 focusQuickInput();
                               }
                             }}
-                            className="w-7 sm:w-10 md:w-12 bg-slate-900 text-center text-white py-0.5 rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-[10px] sm:text-xs md:text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-12 bg-slate-900 text-center text-white py-0.5 rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                           />
                         </form>
@@ -979,21 +1103,14 @@ export default function HalamanOpname() {
                             e.stopPropagation();
                             handleQtyAdjust(index, 1);
                           }}
-                          className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-4 h-5 sm:w-5 sm:h-6 md:w-6 md:h-7 flex items-center justify-center text-[10px] shrink-0"
+                          className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
                           title="Tambah 1"
                         >
-                          <FiPlus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                          <FiPlus className="w-3 h-3" />
                         </button>
                       </div>
                     </td>
-                    <td
-                      onClick={() =>
-                        hasItem
-                          ? handleOpenActionModal(index)
-                          : openSearchModal(index)
-                      }
-                      className="p-1 sm:p-2 border border-slate-700 text-right font-mono font-semibold text-emerald-400"
-                    >
+                    <td className="p-2 border border-slate-700 text-right font-mono font-semibold text-emerald-400">
                       {formatAngka(item.sub_total)}
                     </td>
                   </tr>
@@ -1018,7 +1135,7 @@ export default function HalamanOpname() {
           </div>
           <div className="bg-black border border-slate-700 p-2.5 sm:p-4 rounded-xl text-right">
             <span className="text-[10px] sm:text-xs text-slate-400 font-bold block mb-0.5">
-              GRAND TOTAL (Rp) :
+              {filledItemsWithIndex.length} ITEM ({formatAngka(totalQty)} QTY) • GRAND TOTAL (Rp) :
             </span>
             <span className="text-xl sm:text-3xl font-extrabold text-fuchsia-400 font-mono">
               {formatAngka(grandTotal)}
@@ -1030,8 +1147,8 @@ export default function HalamanOpname() {
         <div className="flex items-center gap-4">
           <button
             onClick={handleSimpan}
-            disabled={loading}
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow transition text-sm sm:text-base"
+            disabled={loading || noBukuExists}
+            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow transition text-sm sm:text-base"
           >
             <FiSave className="w-4 h-4 sm:w-5 sm:h-5" />
             {loading ? "Menyimpan..." : "Simpan Opname"}
@@ -1203,87 +1320,7 @@ export default function HalamanOpname() {
             </div>
           </div>
         )}
-
-        {/* MODAL PENCARIAN BARANG (Ketika klik baris kosong) */}
-        {showSearchModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 sm:p-4">
-            <div className="bg-slate-800 border border-slate-700 w-full max-w-2xl rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
-              <div className="p-3 sm:p-4 bg-slate-700 flex items-center justify-between">
-                <h3 className="font-bold text-base sm:text-lg text-white">
-                  Pilih Barang
-                </h3>
-                <button
-                  onClick={() => setShowSearchModal(false)}
-                  className="text-slate-300 hover:text-white font-bold px-2 py-1 text-base sm:text-lg"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="p-3 sm:p-4 border-b border-slate-700">
-                <div className="relative">
-                  <FiSearch className="absolute left-3 top-3 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchKeyword}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSearchKeyword(val);
-                      fetchBarangs(val);
-                    }}
-                    placeholder="Scan barcode, ketik kode atau nama barang..."
-                    className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-10 pr-4 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-blue-500"
-                    autoFocus
-                  />
-                </div>
-              </div>
-              <div
-                className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2"
-                style={{ minHeight: "260px" }}
-              >
-                {searchingBarang ? (
-                  <div className="text-center py-10 text-slate-400 text-xs sm:text-sm">
-                    Memuat barang...
-                  </div>
-                ) : barangsList.length === 0 ? (
-                  <div className="text-center py-10 text-slate-400 text-xs sm:text-sm">
-                    Tidak ada barang ditemukan.
-                  </div>
-                ) : (
-                  barangsList.map((b) => (
-                    <div
-                      key={b.kd_br}
-                      onClick={() => handleSelectBarangModal(b)}
-                      className="p-2.5 sm:p-3 bg-slate-900/60 hover:bg-slate-700 border border-slate-700 rounded-lg cursor-pointer flex justify-between items-center transition"
-                    >
-                      <div>
-                        <div className="font-mono text-blue-400 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2">
-                          <span>{b.kd_br}</span>
-                          {b.barcode && (
-                            <span className="text-[10px] sm:text-xs text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
-                              Barcode: {b.barcode}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-white font-medium text-xs sm:text-sm line-clamp-1">
-                          {b.nama}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0 ml-2">
-                        <div className="text-[10px] sm:text-xs text-slate-400">
-                          Sat: {b.satuan}
-                        </div>
-                        <div className="text-cyan-400 font-mono text-xs sm:text-sm font-semibold">
-                          Rp {formatAngka(b.h_anggota)}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );
-}  
+}
