@@ -43,7 +43,7 @@ function detectBranchBrand(hostname: string = ""): BranchBrand {
     combined.includes("103.125.42.217")
   ) {
     return {
-      logo: "/tangerang%20192.png",
+      logo: "/Logo_Niaga192X192.png",
       subtitle: "NIAGA PD AREN",
     };
   }
