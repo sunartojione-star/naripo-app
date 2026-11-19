@@ -2,7 +2,7 @@
 
 const STORAGE_KEY = "naripo_admin_wa";
 const LIST_STORAGE_KEY = "naripo_admin_wa_list";
-const DEFAULT_ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WA || "";
+const DEFAULT_ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WA || "6282112927314";
 
 export interface AdminWAContact {
   id: string;
@@ -18,7 +18,6 @@ export interface SettingData {
 }
 
 export function normalizePhoneWA(phone: string): string {
-  // Ambil nomor pertama saja jika di database ada pemisah koma/garis miring
   const firstPhone = String(phone || "").split(/[,/;\n]+/)[0] || "";
   const digits = firstPhone.replace(/\D/g, "");
   if (!digits) return "";
@@ -79,17 +78,26 @@ export function saveAdminWAList(list: AdminWAContact[]): void {
 
 export function getLocalAdminWA(): string {
   if (typeof window === "undefined") return normalizePhoneWA(DEFAULT_ADMIN_WA);
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) return normalizePhoneWA(saved);
   const list = getAdminWAList();
   const active = list.find((item) => item.isActive) || list[0];
   if (active?.phone) return normalizePhoneWA(active.phone);
-  const saved = localStorage.getItem(STORAGE_KEY);
-  return saved ? normalizePhoneWA(saved) : normalizePhoneWA(DEFAULT_ADMIN_WA);
+  return normalizePhoneWA(DEFAULT_ADMIN_WA);
 }
 
 export function setLocalAdminWA(phone: string): string {
   const normalized = normalizePhoneWA(phone);
   if (typeof window !== "undefined" && normalized) {
     localStorage.setItem(STORAGE_KEY, normalized);
+    const list = getAdminWAList();
+    if (list.length > 0) {
+      const updated = list.map((item) => ({
+        ...item,
+        isActive: normalizePhoneWA(item.phone) === normalized,
+      }));
+      localStorage.setItem(LIST_STORAGE_KEY, JSON.stringify(updated));
+    }
   }
   return normalized;
 }
@@ -152,19 +160,16 @@ export async function fetchAdminWA(
   token?: string | null
 ): Promise<string> {
   const local = getLocalAdminWA();
-  if (!apiUrl) return local;
+  if (!apiUrl) return local || normalizePhoneWA(DEFAULT_ADMIN_WA);
   const setting = await fetchSettingData(apiUrl, token);
   if (setting?.telp) {
     return setLocalAdminWA(setting.telp);
   }
-  return local;
+  return local || normalizePhoneWA(DEFAULT_ADMIN_WA);
 }
 
 export function buildWhatsAppUrl(phone: string, message: string): string {
-  const normalized = normalizePhoneWA(phone);
+  const normalized = normalizePhoneWA(phone) || normalizePhoneWA(DEFAULT_ADMIN_WA);
   const encodedText = encodeURIComponent(message);
-  if (!normalized) {
-    return `https://api.whatsapp.com/send?text=${encodedText}`;
-  }
-  return `https://api.whatsapp.com/send?phone=${normalized}&text=${encodedText}`;
+  return `https://wa.me/${normalized}?text=${encodedText}`;
 }

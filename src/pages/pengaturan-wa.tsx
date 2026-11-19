@@ -115,32 +115,36 @@ export default function PengaturanWAPage() {
     let updatedList: AdminWAContact[];
 
     if (editingId) {
+      // Saat edit, jadikan nomor yang diedit sebagai nomor utama
       updatedList = contacts.map((item) =>
         item.id === editingId
-          ? { ...item, label: cleanLabel, phone: normalizedPhone }
-          : item
+          ? { ...item, label: cleanLabel, phone: normalizedPhone, isActive: true }
+          : { ...item, isActive: false }
       );
     } else {
+      // Saat tambah baru, otomatis jadikan nomor baru sebagai nomor utama (Aktif)
       const newContact: AdminWAContact = {
         id: String(Date.now()),
         label: cleanLabel,
         phone: normalizedPhone,
-        isActive: contacts.length === 0,
+        isActive: true,
       };
-      updatedList = [...contacts, newContact];
+      updatedList = [
+        newContact,
+        ...contacts.map((c) => ({ ...c, isActive: false })),
+      ];
     }
 
     setContacts(updatedList);
     saveAdminWAList(updatedList);
 
-    const active = updatedList.find((c) => c.isActive) || updatedList[0];
-    const okServer = active ? await syncToDatabase(active.phone) : false;
+    const okServer = await syncToDatabase(normalizedPhone);
 
     setNotice({
       type: "success",
       text: okServer
-        ? `Nomor ${cleanLabel} (+${normalizedPhone}) berhasil disimpan ke Database.`
-        : `Nomor ${cleanLabel} (+${normalizedPhone}) disimpan di perangkat.`,
+        ? `Nomor ${cleanLabel} (+${normalizedPhone}) aktif sebagai penerima utama di Database.`
+        : `Nomor ${cleanLabel} (+${normalizedPhone}) aktif sebagai penerima utama di perangkat.`,
     });
 
     setLabelInput("");
@@ -251,7 +255,7 @@ export default function PengaturanWAPage() {
           className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs"
         >
           <h2 className="font-bold text-slate-800 text-xs sm:text-sm">
-            {editingId ? "Edit Nomor WA" : "Tambah Nomor WA Baru"}
+            {editingId ? "Edit Nomor WA" : "Tambah Nomor WA Baru (Langsung Jadi Utama)"}
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -309,7 +313,7 @@ export default function PengaturanWAPage() {
               className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition"
             >
               <FiPlus className="w-4 h-4" />
-              <span>{editingId ? "Simpan Perubahan" : "Tambah Nomor WA"}</span>
+              <span>{editingId ? "Simpan Perubahan" : "Simpan & Jadikan Utama"}</span>
             </button>
           </div>
         </form>
