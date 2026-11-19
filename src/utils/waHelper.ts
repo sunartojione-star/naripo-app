@@ -18,7 +18,9 @@ export interface SettingData {
 }
 
 export function normalizePhoneWA(phone: string): string {
-  const digits = String(phone || "").replace(/\D/g, "");
+  // Ambil nomor pertama saja jika di database ada pemisah koma/garis miring
+  const firstPhone = String(phone || "").split(/[,/;\n]+/)[0] || "";
+  const digits = firstPhone.replace(/\D/g, "");
   if (!digits) return "";
   if (digits.startsWith("0")) return "62" + digits.slice(1);
   if (digits.startsWith("8")) return "62" + digits;
@@ -92,7 +94,6 @@ export function setLocalAdminWA(phone: string): string {
   return normalized;
 }
 
-// Ambil seluruh data dari GET /api/setting
 export async function fetchSettingData(
   apiUrl: string,
   token?: string | null
@@ -118,7 +119,6 @@ export async function fetchSettingData(
   return null;
 }
 
-// Simpan nomor WA ke kolom `telp` di POST /api/setting (tanpa menghapus Nama & Alamat)
 export async function saveSettingTelp(
   apiUrl: string,
   token: string | null | undefined,
@@ -147,7 +147,6 @@ export async function saveSettingTelp(
   }
 }
 
-// Ambil nomor WA Admin aktif dari GET /api/setting, fallback ke localStorage
 export async function fetchAdminWA(
   apiUrl?: string,
   token?: string | null
@@ -163,8 +162,9 @@ export async function fetchAdminWA(
 
 export function buildWhatsAppUrl(phone: string, message: string): string {
   const normalized = normalizePhoneWA(phone);
+  const encodedText = encodeURIComponent(message);
   if (!normalized) {
-    return `https://wa.me/?text=${encodeURIComponent(message)}`;
+    return `https://api.whatsapp.com/send?text=${encodedText}`;
   }
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+  return `https://api.whatsapp.com/send?phone=${normalized}&text=${encodedText}`;
 }
