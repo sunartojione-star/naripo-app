@@ -1,3 +1,4 @@
+// src/components/Layout/Header.tsx
 "use client";
 
 import Link from "next/link";
@@ -25,12 +26,64 @@ import {
 import { useCartStoreBS } from "@/store/cartStoreBS";
 import { useCartStore } from "@/store/cartStore";
 
+interface BranchBrand {
+  logo: string;
+  subtitle: string;
+}
+
+function detectBranchBrand(hostname: string = ""): BranchBrand {
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "").toLowerCase();
+  const host = hostname.toLowerCase();
+  const combined = `${host} ${apiUrl}`;
+
+  if (
+    combined.includes("pdaren") ||
+    combined.includes("pd-aren") ||
+    combined.includes("tangerang") ||
+    combined.includes("103.125.42.217")
+  ) {
+    return {
+      logo: "/tangerang%20192.png",
+      subtitle: "NIAGA PD AREN",
+    };
+  }
+
+  if (combined.includes("bekasi") || combined.includes("191.101.190.235")) {
+    return {
+      logo: "/bekasi%20192.png",
+      subtitle: "NIAGA BEKASI",
+    };
+  }
+
+  if (combined.includes("pusat") || combined.includes("103.156.218.44")) {
+    return {
+      logo: "/pusat%20192.png",
+      subtitle: "NIAGA PUSAT",
+    };
+  }
+
+  if (combined.includes("sunter") || combined.includes("151.242.116.131")) {
+    return {
+      logo: "/sunter%20192.png",
+      subtitle: "NIAGA SUNTER",
+    };
+  }
+
+  return {
+    logo: "/Logo_Niaga192X192.png",
+    subtitle: "",
+  };
+}
+
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [userName, setUserName] = useState<string>("");
   const [userFoto, setUserFoto] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [branchBrand, setBranchBrand] = useState<BranchBrand>(() =>
+    detectBranchBrand()
+  );
 
   const mobileProfileRef = useRef<HTMLDivElement>(null);
   const desktopProfileRef = useRef<HTMLDivElement>(null);
@@ -51,6 +104,12 @@ export default function Header() {
         )
       : 0
   );
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setBranchBrand(detectBranchBrand(window.location.hostname));
+    }
+  }, []);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -327,20 +386,31 @@ export default function Header() {
       >
         <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16 gap-2">
-            {/* SISI KIRI: LOGO + NAMA KOPERASI + MENU PC */}
+            {/* SISI KIRI: LOGO + NAMA KOPERASI + CABANG + MENU PC */}
             <div className="flex items-center min-w-0 flex-1 gap-3 xl:gap-5">
               <Link
                 href="/"
                 className="flex items-center gap-2 min-w-0 shrink-0"
               >
                 <img
-                  src="/Logo_Niaga192X192.png"
-                  alt="Logo Koperasi Niaga Abadi"
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain shrink-0"
+                  src={branchBrand.logo}
+                  alt={`Logo ${branchBrand.subtitle || "Koperasi Niaga Abadi"}`}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src =
+                      "/Logo_Niaga192X192.png";
+                  }}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-contain shrink-0"
                 />
-                <span className="font-extrabold text-blue-600 text-xs sm:text-sm xl:text-base tracking-tight truncate">
-                  KOPERASI NIAGA ABADI
-                </span>
+                <div className="flex flex-col min-w-0 leading-tight">
+                  <span className="font-extrabold text-blue-600 text-xs sm:text-sm xl:text-base tracking-tight truncate">
+                    KOPERASI NIAGA ABADI
+                  </span>
+                  {branchBrand.subtitle && (
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 tracking-wide uppercase truncate">
+                      {branchBrand.subtitle}
+                    </span>
+                  )}
+                </div>
               </Link>
 
               {/* MENU HORIZONTAL KHUSUS PC (>= 1024px) */}
