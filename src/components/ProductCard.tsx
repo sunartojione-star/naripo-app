@@ -13,6 +13,7 @@ import {
   FiMaximize,
   FiFolder,
   FiAlertTriangle,
+  FiAlertCircle,
 } from "react-icons/fi";
 
 export interface Barang {
@@ -35,6 +36,11 @@ interface ProductCardProps {
   onSelectProduct?: (product: Barang) => void;
 }
 
+const isPlaceholderBarcode = (val: string | null | undefined): boolean => {
+  const clean = String(val || "").trim();
+  return clean === "" || clean === "0" || clean === "-";
+};
+
 export default function ProductCard({
   product,
   isFavorite = false,
@@ -46,39 +52,37 @@ export default function ProductCard({
   const [loadingFav, setLoadingFav] = useState<boolean>(false);
   const [isAdded, setIsAdded] = useState<boolean>(false);
 
-  // State Modal Input Qty Keranjang & Popup Peringatan Duplikat
   const [showQtyModal, setShowQtyModal] = useState<boolean>(false);
   const [showDuplicatePopup, setShowDuplicatePopup] = useState<boolean>(false);
   const [qtyInput, setQtyInput] = useState<string>("1");
 
-  // State Deteksi Hak Akses Admin
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  // State Modal Edit Khusus Admin
+  const initialCleanBarcode = isPlaceholderBarcode(product.barcode)
+    ? ""
+    : String(product.barcode).trim();
+
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
-  const [editBarcode, setEditBarcode] = useState<string>(product.barcode || "");
+  const [editBarcode, setEditBarcode] = useState<string>(initialCleanBarcode);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const [errorMessage, setErrorMessage] = useState<string>("");
 
-  // State Kamera Jepret Foto Produk
   const [isPhotoCameraActive, setIsPhotoCameraActive] = useState<boolean>(false);
   const videoPhotoRef = useRef<HTMLVideoElement>(null);
   const photoStreamRef = useRef<MediaStream | null>(null);
 
-  // State Kamera Scanner Barcode (Mendukung Barcode 1D & QR Code 2D)
   const [isBarcodeScannerActive, setIsBarcodeScannerActive] =
     useState<boolean>(false);
   const html5QrCodeRef = useRef<any>(null);
 
-  // State Data Tampilan Lokal
   const [currentGambar, setCurrentGambar] = useState<string | null>(
     product.gambar
   );
-  const [currentBarcode, setCurrentBarcode] = useState<string>(
-    product.barcode || ""
-  );
+  const [currentBarcode, setCurrentBarcode] =
+    useState<string>(initialCleanBarcode);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
@@ -111,7 +115,6 @@ export default function ProductCard({
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  // Deteksi Hak Akses Admin dari LocalStorage
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem("user");
@@ -134,9 +137,12 @@ export default function ProductCard({
   }, []);
 
   useEffect(() => {
+    const clean = isPlaceholderBarcode(product.barcode)
+      ? ""
+      : String(product.barcode).trim();
     setCurrentGambar(product.gambar);
-    setCurrentBarcode(product.barcode || "");
-    setEditBarcode(product.barcode || "");
+    setCurrentBarcode(clean);
+    setEditBarcode(clean);
   }, [product]);
 
   useEffect(() => {
@@ -176,12 +182,12 @@ export default function ProductCard({
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.15);
-    } catch (e) {}
+    } catch {}
   };
 
-  // 1. KAMERA JEPRET FOTO PRODUK
   const startPhotoCamera = async () => {
     stopBarcodeScanner();
+    setErrorMessage("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -200,8 +206,10 @@ export default function ProductCard({
           videoPhotoRef.current.play();
         }
       }, 100);
-    } catch (err) {
-      alert("Gagal mengakses kamera: Pastikan izin kamera telah diberikan.");
+    } catch {
+      setErrorMessage(
+        "Gagal mengakses kamera. Pastikan izin kamera pada browser sudah diaktifkan."
+      );
     }
   };
 
@@ -250,9 +258,9 @@ export default function ProductCard({
     setIsPhotoCameraActive(false);
   };
 
-  // 2. KAMERA SCANNER (MENDUKUNG BARCODE 1D & QR CODE 2D)
   const startBarcodeScanner = async () => {
     stopPhotoCamera();
+    setErrorMessage("");
     setIsBarcodeScannerActive(true);
 
     if (!(window as any).Html5Qrcode) {
@@ -290,8 +298,9 @@ export default function ProductCard({
         )
         .catch(() => {
           setIsBarcodeScannerActive(false);
+          setErrorMessage("Gagal membuka kamera scanner barcode.");
         });
-    } catch (e) {
+    } catch {
       setIsBarcodeScannerActive(false);
     }
   };
@@ -318,6 +327,7 @@ export default function ProductCard({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErrorMessage("");
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
@@ -339,18 +349,22 @@ export default function ProductCard({
     });
   };
 
-  // 3. SIMPAN FOTO KE SERVER DAN UPDATE BARCODE KE DATABASE
   const handleSaveAdminData = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSaveMessage("");
+    setErrorMessage("");
 
     stopPhotoCamera();
     stopBarcodeScanner();
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     const cleanKd = String(product.kd_br).replace(/[^a-zA-Z0-9_-]/g, "_");
     const filename = `${cleanKd}.jpg`;
+
+    const trimmedBarcode = editBarcode.trim();
+    const isBarcodeEmpty = isPlaceholderBarcode(trimmedBarcode);
 
     try {
       if (selectedFile) {
@@ -367,14 +381,19 @@ export default function ProductCard({
               gambar: base64Data,
             }),
           });
-        } catch (e) {
-          console.warn("Upload base64 dilewati:", e);
+        } catch (err) {
+          console.warn("Upload base64 dilewati:", err);
         }
       }
 
       const formData = new FormData();
       formData.append("_method", "PUT");
-      formData.append("barcode", editBarcode.trim());
+
+      // Hanya kirim barcode jika valid dan benar-benar berubah (hindari kirim "0" atau "" yang duplikat)
+      if (!isBarcodeEmpty && trimmedBarcode !== currentBarcode) {
+        formData.append("barcode", trimmedBarcode);
+      }
+
       if (product.nama) formData.append("nama", product.nama);
       if (product.satuan) formData.append("satuan", product.satuan || "DUS");
 
@@ -397,24 +416,25 @@ export default function ProductCard({
       const resData = await resUpdate.json();
 
       if (!resUpdate.ok) {
-        const errorMsg =
+        const msg =
           resData.message ||
           (resData.errors
             ? Object.values(resData.errors).flat().join("\n")
             : "") ||
           "Gagal update data barang.";
-        throw new Error(errorMsg);
+        throw new Error(msg);
       }
 
       const savedImageName = selectedFile ? filename : currentGambar;
+      const finalBarcode = isBarcodeEmpty ? "" : trimmedBarcode;
       setCurrentGambar(previewImage || savedImageName);
-      setCurrentBarcode(editBarcode);
+      setCurrentBarcode(finalBarcode);
 
       if (onProductUpdated) {
         onProductUpdated({
           ...product,
           gambar: savedImageName,
-          barcode: editBarcode,
+          barcode: finalBarcode,
         });
       }
 
@@ -426,7 +446,7 @@ export default function ProductCard({
       }, 800);
     } catch (err: any) {
       console.error("Gagal simpan barang:", err);
-      alert(err.message || "Gagal menyimpan ke database.");
+      setErrorMessage(err.message || "Gagal menyimpan ke database.");
     } finally {
       setIsSaving(false);
     }
@@ -510,7 +530,6 @@ export default function ProductCard({
     <>
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs hover:shadow-md transition p-2 sm:p-3 flex flex-col justify-between relative group overflow-hidden w-full">
         <div>
-          {/* Gambar Produk (Klik untuk buka Detail Produk) */}
           <div
             onClick={handleOpenDetail}
             className="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden relative border border-gray-100 cursor-pointer"
@@ -535,7 +554,6 @@ export default function ProductCard({
               </span>
             )}
 
-            {/* TOMBOL EDIT KHUSUS ADMIN */}
             {isAdmin && (
               <button
                 type="button"
@@ -545,6 +563,8 @@ export default function ProductCard({
                   setEditBarcode(currentBarcode);
                   setPreviewImage(null);
                   setSelectedFile(null);
+                  setErrorMessage("");
+                  setSaveMessage("");
                   setIsEditModalOpen(true);
                 }}
                 title="Khusus Admin: Jepret/Ganti Foto & Scan Barcode"
@@ -555,7 +575,6 @@ export default function ProductCard({
               </button>
             )}
 
-            {/* Tombol Favorit */}
             <button
               onClick={handleFavoriteClick}
               type="button"
@@ -575,7 +594,6 @@ export default function ProductCard({
             </button>
           </div>
 
-          {/* Badge & Info */}
           <div className="flex items-center gap-1 mb-1 flex-wrap">
             {product.kd && (
               <span className="text-[9px] font-mono font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">
@@ -604,7 +622,6 @@ export default function ProductCard({
           <div>{renderKetBadge(product.ket)}</div>
         </div>
 
-        {/* Harga & Tombol Keranjang */}
         <div className="mt-2 pt-1.5 border-t border-gray-100 flex items-center justify-between gap-1">
           <div className="min-w-0 flex-1">
             <p className="text-[9px] text-gray-400 leading-none mb-0.5">
@@ -634,7 +651,6 @@ export default function ProductCard({
         </div>
       </div>
 
-      {/* POPUP PERINGATAN: BARANG WES NANG KERANJANG */}
       {showDuplicatePopup && (
         <div
           className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
@@ -648,7 +664,6 @@ export default function ProductCard({
             className="bg-white w-full max-w-xs sm:max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-amber-200 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header Gradasi Kuning-Oranye */}
             <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 px-4 py-4 text-center relative">
               <button
                 type="button"
@@ -665,7 +680,6 @@ export default function ProductCard({
               </h3>
             </div>
 
-            {/* Isi Info Barang */}
             <div className="p-4 text-center space-y-3">
               <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3">
                 <p className="text-xs font-bold text-gray-800 line-clamp-2 leading-snug">
@@ -718,7 +732,6 @@ export default function ProductCard({
         </div>
       )}
 
-      {/* MODAL POPUP INPUT QTY KERANJANG */}
       {showQtyModal && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
@@ -815,11 +828,9 @@ export default function ProductCard({
         </div>
       )}
 
-      {/* MODAL POPUP EDIT FOTO & BARCODE (KHUSUS ADMIN) */}
       {isEditModalOpen && isAdmin && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]">
-            {/* Header Modal */}
             <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FiCamera className="text-amber-400 w-4 h-4" />
@@ -845,12 +856,10 @@ export default function ProductCard({
               </button>
             </div>
 
-            {/* Form Konten */}
             <form
               onSubmit={handleSaveAdminData}
               className="p-4 space-y-4 overflow-y-auto flex-1"
             >
-              {/* Info Produk */}
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                 <p className="text-xs font-bold text-slate-800 line-clamp-1">
                   {product.nama}
@@ -864,7 +873,6 @@ export default function ProductCard({
                 </p>
               </div>
 
-              {/* 1. BAGIAN FOTO PRODUK */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-800">
                   1. Foto Produk
@@ -948,10 +956,9 @@ export default function ProductCard({
                 )}
               </div>
 
-              {/* 2. BAGIAN NOMOR BARCODE */}
               <div className="space-y-1.5 pt-2 border-t border-slate-100">
                 <label className="block text-xs font-bold text-slate-800">
-                  2. Barcode Produk (Garis 1D / QR Code 2D)
+                  2. Barcode Produk (Opsional — Garis 1D / QR Code 2D)
                 </label>
 
                 {isBarcodeScannerActive && (
@@ -985,7 +992,7 @@ export default function ProductCard({
                           e.preventDefault();
                         }
                       }}
-                      placeholder="Scan alat barcode atau ketik angka..."
+                      placeholder="Boleh kosong, atau scan/ketik barcode..."
                       className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 font-mono font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
                     />
                   </div>
@@ -1002,19 +1009,24 @@ export default function ProductCard({
                 </div>
 
                 <p className="text-[9px] text-slate-400 italic">
-                  *Bisa mendeteksi Barcode Garis (1D) maupun QR Code (2D), atau
-                  tembak dengan alat scan di PC.
+                  *Bisa dikosongkan jika hanya ingin menyimpan foto, atau scan
+                  Barcode 1D / QR Code 2D.
                 </p>
               </div>
 
-              {/* Status Notifikasi */}
+              {errorMessage && (
+                <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-1.5">
+                  <FiAlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
               {saveMessage && (
                 <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs text-center rounded-xl font-bold">
                   {saveMessage}
                 </div>
               )}
 
-              {/* Tombol Aksi */}
               <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"

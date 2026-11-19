@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
 import BSCard, { Barang } from "@/components/BSCard";
+import BSDetailModal from "@/components/BSDetailModal";
 import {
   FiSearch,
   FiBox,
@@ -10,6 +11,7 @@ import {
   FiGrid,
   FiTag,
   FiX,
+  FiAlertCircle,
 } from "react-icons/fi";
 
 interface PaginationMeta {
@@ -27,6 +29,10 @@ export default function HalamanBS() {
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [errorProducts, setErrorProducts] = useState<string>("");
+  const [toastMsg, setToastMsg] = useState<string>("");
+
+  // State Modal Detail BS
+  const [selectedProduct, setSelectedProduct] = useState<Barang | null>(null);
 
   // State Pencarian & Filter
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -50,12 +56,15 @@ export default function HalamanBS() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  // Pastikan komponen sudah termuat di browser
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(""), 3000);
+  };
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Deteksi scroll untuk bayangan halus pada sticky search bar
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 30);
@@ -197,7 +206,7 @@ export default function HalamanBS() {
     fetchData();
   }, [isMounted, currentPage, debouncedSearch, selectedMerk, apiUrl]);
 
-  // Infinite Scroll Observer (otomatis muat halaman berikutnya saat mendekati bawah)
+  // Infinite Scroll Observer
   useEffect(() => {
     if (!isMounted || loadingProducts || loadingMore) return;
     if (currentPage >= pagination.total_pages) return;
@@ -228,7 +237,7 @@ export default function HalamanBS() {
   const handleToggleFavorite = async (product: Barang) => {
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("Silakan login terlebih dahulu untuk menambah ke favorit.");
+      showToast("Silakan login terlebih dahulu untuk menambah ke favorit.");
       return;
     }
 
@@ -262,11 +271,22 @@ export default function HalamanBS() {
           return newSet;
         });
       } else {
-        alert(result.message || "Gagal memperbarui favorit.");
+        showToast(result.message || "Gagal memperbarui favorit.");
       }
     } catch (err) {
       console.error("Error toggle favorit:", err);
+      showToast("Terjadi kesalahan koneksi saat memperbarui favorit.");
     }
+  };
+
+  const handleProductUpdated = (updatedProduct: Barang) => {
+    setProducts((prev) =>
+      prev.map((item) =>
+        String(item.kd_bs) === String(updatedProduct.kd_bs)
+          ? { ...item, ...updatedProduct }
+          : item
+      )
+    );
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,7 +314,15 @@ export default function HalamanBS() {
         className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 pt-2 pb-16 sm:py-4"
         suppressHydrationWarning
       >
-        {/* 1. HEADER RINGKAS: Judul + Jumlah Produk + Reset dalam 1 baris */}
+        {/* Toast Notifikasi In-App */}
+        {toastMsg && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold flex items-center gap-2">
+            <FiAlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>{toastMsg}</span>
+          </div>
+        )}
+
+        {/* 1. HEADER RINGKAS */}
         <div className="flex items-center justify-between mb-1.5">
           <h1 className="text-base sm:text-xl font-bold text-gray-900 flex items-center gap-1.5">
             <FiBox className="text-blue-600 w-4 h-4 sm:w-5 sm:h-5" />
@@ -322,7 +350,7 @@ export default function HalamanBS() {
           </div>
         </div>
 
-        {/* 2. KOTAK PENCARIAN STICKY (Berhenti di bawah navbar saat di-scroll ke bawah) */}
+        {/* 2. KOTAK PENCARIAN STICKY */}
         <div
           className={`sticky top-14 sm:top-16 z-30 -mx-2.5 px-2.5 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-1.5 mb-2 transition-all duration-150 ${
             isScrolled
@@ -354,7 +382,7 @@ export default function HalamanBS() {
           </div>
         </div>
 
-        {/* Filter Merk (Hanya jika ada data merk) */}
+        {/* Filter Merk */}
         {merkList.length > 0 && (
           <div className="bg-white px-2.5 py-2 sm:p-3 rounded-xl shadow-xs border border-gray-100 mb-3">
             <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -418,6 +446,8 @@ export default function HalamanBS() {
                   product={product}
                   isFavorite={favoriteKdBrs.has(String(product.kd_bs))}
                   onToggleFavorite={handleToggleFavorite}
+                  onProductUpdated={handleProductUpdated}
+                  onSelectProduct={(prod) => setSelectedProduct(prod)}
                 />
               ))}
             </div>
@@ -438,6 +468,12 @@ export default function HalamanBS() {
           </>
         )}
       </main>
+
+      {/* Modal Detail Barang BS */}
+      <BSDetailModal
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+      />
     </Layout>
   );
 }
