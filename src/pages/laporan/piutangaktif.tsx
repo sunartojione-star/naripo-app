@@ -14,6 +14,8 @@ import {
   FiSearch,
   FiUsers,
   FiDollarSign,
+  FiX,
+  FiRefreshCw,
 } from "react-icons/fi";
 
 const formatAmount = (value: unknown) => {
@@ -22,6 +24,22 @@ const formatAmount = (value: unknown) => {
   return Number.isFinite(amount)
     ? `Rp ${amount.toLocaleString("id-ID")}`
     : String(value);
+};
+
+const toLocalYYYYMMDD = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const formatDateDDMMYYYY = (raw: unknown): string => {
+  const s = String(raw || "").slice(0, 10);
+  const parts = s.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return s || "-";
 };
 
 export default function PiutangAktifPage() {
@@ -34,7 +52,25 @@ export default function PiutangAktifPage() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(40);
 
+  // State Popup Detail Piutang Anggota
+  const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
+  const [dariDate, setDariDate] = useState<string>("");
+  const [sampaiDate, setSampaiDate] = useState<string>("");
+  const [saldoTerakhir, setSaldoTerakhir] = useState<number | null>(null);
+  const [historyRows, setHistoryRows] = useState<any[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState<boolean>(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const baseUrl = (
+    process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api"
+  ).replace(/\/$/, "");
+
   useEffect(() => {
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    setDariDate(toLocalYYYYMMDD(firstDayOfMonth));
+    setSampaiDate(toLocalYYYYMMDD(today));
+
     fetchPiutangAktif();
   }, []);
 
@@ -49,15 +85,10 @@ export default function PiutangAktifPage() {
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
       router.push("/login");
       setLoading(false);
       return;
     }
-
-    const baseUrl = (
-      process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api"
-    ).replace(/\/$/, "");
 
     try {
       const res = await fetch(`${baseUrl}/lap-piutang`, {
@@ -93,7 +124,98 @@ export default function PiutangAktifPage() {
     }
   };
 
-  // Filter pencarian berdasarkan nama, kode customer, atau alamat
+  const fetchCustomerDetail = async (
+    kdCus: string,
+    dari: string,
+    sampai: string
+  ) => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setLoadingDetail(true);
+    setDetailError(null);
+
+    try {
+      const [resSaldo, resHistory] = await Promise.all([
+        fetch(
+          `${baseUrl}/piutang/saldo?kd_cus=${encodeURIComponent(kdCus.trim())}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          }
+        ),
+        fetch(
+          `${baseUrl}/piutang/history?kd_cus=${encodeURIComponent(
+            kdCus.trim()
+          )}&dari=${encodeURIComponent(dari)}&sampai=${encodeURIComponent(
+            sampai
+          )}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          }
+        ),
+      ]);
+
+      if (resSaldo.ok) {
+        const jsonSaldo = await resSaldo.json().catch(() => null);
+        const sVal =
+          jsonSaldo?.data?.saldo_piutang_terakhir ??
+          jsonSaldo?.data?.saldo_piutang ??
+          jsonSaldo?.saldo_piutang_terakhir;
+        if (sVal !== undefined && sVal !== null) {
+          setSaldoTerakhir(Number(sVal));
+        }
+      }
+
+      const jsonHistory = await resHistory.json().catch(() => null);
+      if (!resHistory.ok || jsonHistory?.success === false) {
+        throw new Error(
+          jsonHistory?.message ||
+            `Gagal memuat riwayat piutang (${resHistory.status})`
+        );
+      }
+
+      const rows = Array.isArray(jsonHistory?.data)
+        ? jsonHistory.data
+        : Array.isArray(jsonHistory)
+        ? jsonHistory
+        : [];
+      setHistoryRows(rows);
+    } catch (err: any) {
+      setDetailError(
+        err?.message || "Gagal mengambil detail riwayat piutang pelanggan."
+      );
+      setHistoryRows([]);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleOpenCustomerDetail = (item: any) => {
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const defaultDari = toLocalYYYYMMDD(firstDayOfMonth);
+    const defaultSampai = toLocalYYYYMMDD(today);
+
+    setDariDate(defaultDari);
+    setSampaiDate(defaultSampai);
+    setSelectedCustomer(item);
+    setSaldoTerakhir(
+      item.saldo_piutang !== undefined ? Number(item.saldo_piutang) : null
+    );
+    setHistoryRows([]);
+    setDetailError(null);
+    if (item.kd_cus) {
+      fetchCustomerDetail(String(item.kd_cus), defaultDari, defaultSampai);
+    }
+  };
+
   const filteredReports = useMemo(() => {
     return reports.filter((item) => {
       if (!searchQuery) return true;
@@ -107,7 +229,6 @@ export default function PiutangAktifPage() {
     });
   }, [reports, searchQuery]);
 
-  // Hitung Grand Total seluruh piutang pelanggan
   const grandTotalPiutang = useMemo(() => {
     return filteredReports.reduce((sum, item) => {
       const val = Number(item.saldo_piutang);
@@ -141,7 +262,7 @@ export default function PiutangAktifPage() {
                     Piutang Anggota / Customer Aktif
                   </h1>
                   <p className="text-[11px] text-blue-100 leading-snug">
-                    Daftar saldo piutang customer aktif yang belum lunas
+                    Klik nama anggota untuk melihat detail riwayat hutang
                   </p>
                 </div>
               </div>
@@ -157,7 +278,6 @@ export default function PiutangAktifPage() {
             </div>
 
             <div className="p-3 sm:p-5">
-              {/* Kotak Ringkasan Atas (Total Customer & Total Seluruh Hutang Pelanggan) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                 <div className="flex items-center justify-between sm:justify-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/60 px-3.5 py-2.5 sm:px-4 sm:py-3">
                   <div className="flex items-center gap-2.5">
@@ -203,7 +323,7 @@ export default function PiutangAktifPage() {
             </div>
           </div>
 
-          {/* Pencarian Sticky (Tetap Tampil Rapi Saat Scroll) */}
+          {/* Pencarian Sticky */}
           <div className="sticky top-14 sm:top-16 z-20 rounded-2xl border border-slate-200/80 bg-white/95 backdrop-blur-sm p-2.5 sm:p-3 shadow-sm">
             <div className="relative w-full">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
@@ -211,7 +331,7 @@ export default function PiutangAktifPage() {
               </span>
               <input
                 type="text"
-                placeholder="Cari nama atau alamat..."
+                placeholder="Cari nama, kode cus, atau alamat..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-8 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
@@ -255,7 +375,7 @@ export default function PiutangAktifPage() {
             </div>
           ) : (
             <>
-              {/* TAMPILAN HP: Daftar Kartu Kompak (Tidak Terpotong) */}
+              {/* TAMPILAN HP: Daftar Kartu Kompak */}
               <div className="space-y-2 md:hidden">
                 {paginatedReports.map((item, index) => {
                   const absoluteIndex =
@@ -263,14 +383,15 @@ export default function PiutangAktifPage() {
                   return (
                     <div
                       key={`${item.kd_cus}-${index}`}
-                      className="rounded-xl border border-slate-100 bg-white p-3 shadow-xs space-y-1.5"
+                      onClick={() => handleOpenCustomerDetail(item)}
+                      className="rounded-xl border border-slate-100 bg-white p-3 shadow-xs space-y-1.5 cursor-pointer hover:border-blue-300 active:scale-[0.99] transition"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-start gap-1.5 min-w-0">
                           <span className="shrink-0 text-[11px] font-bold text-slate-400 mt-0.5">
                             {absoluteIndex}.
                           </span>
-                          <h3 className="text-xs font-bold text-slate-800 leading-snug break-words">
+                          <h3 className="text-xs font-bold text-blue-800 leading-snug break-words">
                             {item.nama || "-"}
                           </h3>
                         </div>
@@ -286,7 +407,7 @@ export default function PiutangAktifPage() {
                           <div className="flex items-center gap-1">
                             <FiCalendar className="h-3 w-3 shrink-0 text-slate-400" />
                             <span className="font-mono">
-                              {String(item.tgl_akhir || "-").slice(0, 10)}
+                              {formatDateDDMMYYYY(item.tgl_akhir)}
                             </span>
                           </div>
                           {item.alamat && (
@@ -299,7 +420,7 @@ export default function PiutangAktifPage() {
 
                         <div className="shrink-0 text-right">
                           <div className="text-[10px] text-slate-400">
-                            Saldo Piutang
+                            Saldo Piutang ›
                           </div>
                           <div className="font-mono text-xs font-extrabold text-rose-600">
                             {formatAmount(item.saldo_piutang)}
@@ -310,7 +431,6 @@ export default function PiutangAktifPage() {
                   );
                 })}
 
-                {/* Kartu Grand Total di Bawah Daftar (HP) */}
                 <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-3 font-bold text-slate-900">
                   <span className="text-xs">GRAND TOTAL PIUTANG</span>
                   <span className="font-mono text-sm text-rose-600">
@@ -327,7 +447,7 @@ export default function PiutangAktifPage() {
                       <tr>
                         <th className="px-3 py-3 text-left font-bold w-12">No</th>
                         <th className="px-3 py-3 text-left font-bold">
-                          Nama Pelanggan
+                          Nama Pelanggan (Klik untuk Detail)
                         </th>
                         <th className="px-3 py-3 text-right font-bold">
                           Saldo Piutang
@@ -348,13 +468,14 @@ export default function PiutangAktifPage() {
                         return (
                           <tr
                             key={`${item.kd_cus}-${index}`}
-                            className="hover:bg-blue-50/50"
+                            onClick={() => handleOpenCustomerDetail(item)}
+                            className="hover:bg-blue-50/70 cursor-pointer transition-colors"
                           >
                             <td className="px-3 py-3 text-slate-500">
                               {absoluteIndex}
                             </td>
                             <td
-                              className="max-w-[240px] px-3 py-3 font-semibold text-slate-800 truncate"
+                              className="max-w-[240px] px-3 py-3 font-semibold text-blue-700 hover:underline truncate"
                               title={item.nama}
                             >
                               {item.nama}
@@ -363,7 +484,7 @@ export default function PiutangAktifPage() {
                               {formatAmount(item.saldo_piutang)}
                             </td>
                             <td className="px-3 py-3 text-center text-slate-600 font-mono whitespace-nowrap">
-                              {String(item.tgl_akhir || "").slice(0, 10)}
+                              {formatDateDDMMYYYY(item.tgl_akhir)}
                             </td>
                             <td className="px-3 py-3 text-center">
                               <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
@@ -449,6 +570,232 @@ export default function PiutangAktifPage() {
           )}
         </div>
       </div>
+
+      {/* POPUP MODAL DETAIL RIWAYAT PIUTANG PELANGGAN */}
+      {selectedCustomer && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setSelectedCustomer(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-5xl h-[90dvh] sm:h-auto sm:max-h-[88vh] rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Modal */}
+            <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0">
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm sm:text-base truncate">
+                  {selectedCustomer.nama || "-"}
+                </h3>
+                <p className="text-[11px] text-slate-300 font-mono">
+                  Kode Cus: {selectedCustomer.kd_cus || "-"}
+                  {selectedCustomer.alamat ? ` • ${selectedCustomer.alamat}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCustomer(null)}
+                className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 shrink-0"
+              >
+                <FiX className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Ringkasan Saldo + Filter Tanggal */}
+            <div className="p-3 sm:p-4 bg-slate-50 border-b border-slate-200 space-y-3 shrink-0">
+              <div className="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5">
+                <span className="text-xs font-bold text-slate-700">
+                  Saldo Piutang Terakhir:
+                </span>
+                <span className="font-mono text-sm sm:text-base font-extrabold text-rose-600">
+                  {formatAmount(saldoTerakhir)}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-end">
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    Dari Tanggal
+                  </label>
+                  <input
+                    type="date"
+                    value={dariDate}
+                    onChange={(e) => setDariDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                    Sampai Tanggal
+                  </label>
+                  <input
+                    type="date"
+                    value={sampaiDate}
+                    onChange={(e) => setSampaiDate(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={loadingDetail}
+                  onClick={() =>
+                    fetchCustomerDetail(
+                      String(selectedCustomer.kd_cus),
+                      dariDate,
+                      sampaiDate
+                    )
+                  }
+                  className="col-span-2 sm:col-span-1 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1 active:scale-95 transition disabled:opacity-50"
+                >
+                  <FiRefreshCw
+                    className={`w-3.5 h-3.5 ${
+                      loadingDetail ? "animate-spin" : ""
+                    }`}
+                  />
+                  <span>Tampilkan</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Isi Riwayat Mutasi Piutang */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+              {loadingDetail ? (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  Memuat riwayat piutang...
+                </div>
+              ) : detailError ? (
+                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs text-center">
+                  {detailError}
+                </div>
+              ) : historyRows.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  Tidak ada mutasi piutang pada rentang tanggal ini.
+                </div>
+              ) : (
+                <>
+                  {/* Tampilan HP: Kartu Mutasi */}
+                  <div className="space-y-2 md:hidden">
+                    {historyRows.map((row, idx) => {
+                      const noPiutang = row.no_piutang ?? row.NO_PIUTANG ?? "-";
+                      const tgl = formatDateDDMMYYYY(
+                        row.tgl_piutang ?? row.TGL_PIUTANG
+                      );
+                      const ket = row.Ket ?? row.ket ?? row.KET ?? "-";
+                      const hutang = Number(row.D ?? row.d ?? 0);
+                      const bayar = Number(row.K ?? row.k ?? 0);
+                      const bsVal = Number(row.bs ?? row.BS ?? 0);
+                      const kuponVal = Number(row.kupon ?? row.KUPON ?? 0);
+                      const saldo =
+                        row.saldo_piutang ?? row.SALDO_PIUTANG ?? null;
+
+                      return (
+                        <div
+                          key={row.no_urut ?? idx}
+                          className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 text-xs space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-mono font-bold text-slate-700">
+                              {tgl} • #{noPiutang}
+                            </span>
+                            {saldo !== null && (
+                              <span className="font-mono font-extrabold text-slate-900">
+                                Saldo: {formatAmount(saldo)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-slate-800 font-semibold break-words">
+                            {String(ket)}
+                          </p>
+                          <div className="grid grid-cols-2 gap-1 text-[11px] font-mono pt-1.5 border-t border-slate-200/70">
+                            <span className="text-rose-600">
+                              Hutang: {formatAmount(hutang)}
+                            </span>
+                            <span className="text-emerald-600 text-right">
+                              Bayar: {formatAmount(bayar)}
+                            </span>
+                            <span className="text-amber-700">
+                              BS: {formatAmount(bsVal)}
+                            </span>
+                            <span className="text-blue-700 text-right">
+                              Kupon: {formatAmount(kuponVal)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Tampilan PC: Tabel Mutasi */}
+                  <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-xl">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
+                          <th className="px-2 py-2.5 w-20">No Piutang</th>
+                          <th className="px-2 py-2.5 w-20">Tanggal</th>
+                          <th className="px-2 py-2.5">Keterangan</th>
+                          <th className="px-2 py-2.5 text-right">Hutang</th>
+                          <th className="px-2 py-2.5 text-right">Bayar</th>
+                          <th className="px-2 py-2.5 text-right">BS</th>
+                          <th className="px-2 py-2.5 text-right">Kupon</th>
+                          <th className="px-2 py-2.5 text-right">Saldo Piutang</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {historyRows.map((row, idx) => {
+                          const noPiutang =
+                            row.no_piutang ?? row.NO_PIUTANG ?? "-";
+                          const tgl = formatDateDDMMYYYY(
+                            row.tgl_piutang ?? row.TGL_PIUTANG
+                          );
+                          const ket = row.Ket ?? row.ket ?? row.KET ?? "-";
+                          const hutang = Number(row.D ?? row.d ?? 0);
+                          const bayar = Number(row.K ?? row.k ?? 0);
+                          const bsVal = Number(row.bs ?? row.BS ?? 0);
+                          const kuponVal = Number(row.kupon ?? row.KUPON ?? 0);
+                          const saldo =
+                            row.saldo_piutang ?? row.SALDO_PIUTANG ?? null;
+
+                          return (
+                            <tr
+                              key={row.no_urut ?? idx}
+                              className="hover:bg-blue-50/40"
+                            >
+                              <td className="px-2 py-2 font-mono text-slate-600 whitespace-nowrap">
+                                {noPiutang}
+                              </td>
+                              <td className="px-2 py-2 font-mono text-slate-700 whitespace-nowrap">
+                                {tgl}
+                              </td>
+                              <td className="px-2 py-2 text-slate-800 font-medium">
+                                {String(ket)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-rose-600 whitespace-nowrap">
+                                {formatAmount(hutang)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-emerald-600 whitespace-nowrap">
+                                {formatAmount(bayar)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-amber-700 whitespace-nowrap">
+                                {formatAmount(bsVal)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-blue-700 whitespace-nowrap">
+                                {formatAmount(kuponVal)}
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                {saldo !== null ? formatAmount(saldo) : "-"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

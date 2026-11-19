@@ -19,6 +19,9 @@ import {
   FiTrendingUp,
   FiTruck,
   FiFileText,
+  FiMessageCircle,
+  FiMaximize,
+  FiUserCheck,
 } from "react-icons/fi";
 
 export default function Home() {
@@ -36,7 +39,9 @@ export default function Home() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  const isAdmin = userRole.toLowerCase() === "admin";
+  const isAdmin = ["admin", "super admin", "superadmin"].includes(
+    userRole.trim().toLowerCase()
+  );
 
   useEffect(() => {
     setIsMounted(true);
@@ -177,6 +182,11 @@ export default function Home() {
     }
   };
 
+  const handleOrderKasir = () => {
+    if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
+    router.push("/order-kasir");
+  };
+
   const handleInputBS = () => {
     if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
     router.push("/BS/halamanBS");
@@ -214,14 +224,24 @@ export default function Home() {
           {/* 1. HERO BANNER PENUH */}
           <section className="w-full bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white rounded-xl p-3 sm:p-6 mb-4 sm:mb-8 shadow-sm relative overflow-hidden">
             <div className="w-full flex flex-col items-center relative z-10">
-              <div className="w-full sm:w-auto mb-2.5 sm:mb-4 flex justify-center">
+              {/* BARIS ATAS: BELANJA SEKARANG + ORDER KASIR (SEJAJAR RAPI) */}
+              <div className="w-full max-w-md mb-2 sm:mb-3 grid grid-cols-2 gap-1.5 sm:gap-3">
                 <Link
                   href="/products"
-                  className="w-full sm:w-auto bg-white text-blue-700 px-4 py-2.5 rounded-lg font-bold hover:bg-blue-50 transition shadow-sm flex items-center justify-center gap-2 group text-xs sm:text-sm active:scale-95"
+                  className="bg-white text-blue-700 px-3 py-2 rounded-lg font-bold hover:bg-blue-50 transition shadow-sm flex items-center justify-center gap-1.5 group text-[11px] sm:text-xs active:scale-95"
                 >
-                  Belanja Sekarang
-                  <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
+                  <span>Belanja Sekarang</span>
+                  <FiArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform shrink-0" />
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={handleOrderKasir}
+                  className="bg-cyan-400 hover:bg-cyan-300 text-slate-900 px-3 py-2 rounded-lg font-extrabold transition shadow-sm flex items-center justify-center gap-1.5 text-[11px] sm:text-xs active:scale-95"
+                >
+                  <FiMaximize className="w-3.5 h-3.5 shrink-0" />
+                  <span>Order Kasir</span>
+                </button>
               </div>
 
               {/* MENU UMUM (SEMUA USER) */}
@@ -263,13 +283,13 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* MENU KHUSUS ADMIN (STOK OPNAME + 5 LAPORAN) */}
+              {/* MENU KHUSUS ADMIN */}
               {isAdmin && (
                 <div className="w-full mt-2.5 sm:mt-3.5 pt-2.5 sm:pt-3.5 border-t border-white/20">
                   <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-100 mb-1.5 sm:mb-2 text-center sm:text-left">
                     Menu Khusus Admin
                   </p>
-                  <div className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 sm:gap-2.5">
+                  <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2.5">
                     <button
                       type="button"
                       onClick={handleStokOpname}
@@ -317,6 +337,22 @@ export default function Home() {
                     >
                       <FiTruck className="w-3.5 h-3.5 shrink-0" />
                       <span>HUTANG SUPPLIER</span>
+                    </Link>
+
+                    <Link
+                      href="/pengaturan-wa"
+                      className="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiMessageCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>NOMOR WA ADMIN</span>
+                    </Link>
+
+                    <Link
+                      href="/users"
+                      className="bg-violet-600 hover:bg-violet-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiUserCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>DATA USERS</span>
                     </Link>
                   </div>
                 </div>

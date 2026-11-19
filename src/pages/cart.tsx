@@ -8,7 +8,6 @@ import Layout from "@/components/Layout";
 import {
   FiArrowLeft,
   FiSave,
-  FiXCircle,
   FiMinus,
   FiPlus,
   FiShoppingBag,
@@ -16,10 +15,17 @@ import {
   FiEdit2,
   FiCheckCircle,
   FiX,
+  FiMessageCircle,
+  FiAlertCircle,
 } from "react-icons/fi";
 import { useCartStore } from "@/store/cartStore";
+import {
+  buildWhatsAppUrl,
+  getLocalAdminWA,
+  getLocalDateYYYYMMDD,
+  formatDateDDMMYYYY,
+} from "@/utils/waHelper";
 
-// Ekstraksi nomor transaksi kd_tran fleksibel
 function extractKdTran(res: any): string | number | null {
   if (!res) return null;
   if (typeof res === "number" || (typeof res === "string" && res.trim() !== "")) {
@@ -73,6 +79,18 @@ export default function CartPage() {
   const router = useRouter();
   const [deliveryDate, setDeliveryDate] = useState("");
   const [loading, setLoading] = useState(false);
+  const [adminWA, setAdminWA] = useState("");
+
+  // State Varian / Rasa per item (key = itemId)
+  const [rasaMap, setRasaMap] = useState<Record<string, string>>({});
+
+  // State Notifikasi & Modal Sukses WA
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{
+    kdTran: string | number;
+    total: number;
+    waUrl: string;
+  } | null>(null);
 
   // State Modal Edit / Hapus Item
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
@@ -91,7 +109,6 @@ export default function CartPage() {
     kd_cus: "",
   });
 
-  // Zustand regular cart
   const items = useCartStore((state: any) => state.items) || [];
   const removeFromCart = useCartStore((state: any) => state.removeFromCart);
   const updateQuantity = useCartStore((state: any) => state.updateQuantity);
@@ -107,8 +124,8 @@ export default function CartPage() {
   };
 
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
-    setDeliveryDate(today);
+    setDeliveryDate(getLocalDateYYYYMMDD());
+    setAdminWA(getLocalAdminWA());
 
     try {
       const savedUserStr = localStorage.getItem("user");
@@ -135,6 +152,23 @@ export default function CartPage() {
     }
   }, []);
 
+  useEffect(() => {
+    setRasaMap((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      items.forEach((item: any, idx: number) => {
+        const product = item.product || item;
+        const key = String(product.kd_br || product.kd || product.id || idx);
+        const existingRasa = item.rasa || product.rasa || "";
+        if (next[key] === undefined && existingRasa && existingRasa !== "-") {
+          next[key] = String(existingRasa);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [items]);
+
   const parsePrice = (price: any): number => {
     if (typeof price === "number") return price;
     if (typeof price === "string") {
@@ -158,6 +192,16 @@ export default function CartPage() {
     }, 0)
   );
 
+  const getItemRasa = (item: any, idx: number): string => {
+    const product = item.product || item;
+    const key = String(product.kd_br || product.kd || product.id || idx);
+    return rasaMap[key] ?? (item.rasa || product.rasa || "");
+  };
+
+  const handleRasaChange = (itemKey: string, value: string) => {
+    setRasaMap((prev) => ({ ...prev, [itemKey]: value }));
+  };
+
   const handleOpenEditModal = (item: any, index: number) => {
     setSelectedItem(item);
     setSelectedIdx(index);
@@ -172,63 +216,51 @@ export default function CartPage() {
     }
   };
 
-  // Simpan Pesanan PO
   const handleOrder = async () => {
+    setErrorMsg(null);
+
     if (!deliveryDate) {
-      alert("Pilih tanggal kirim terlebih dahulu");
+      setErrorMsg("Pilih tanggal kirim terlebih dahulu.");
       return;
     }
 
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
       router.push("/login");
       return;
     }
 
     if (items.length === 0) {
-      alert("Keranjang masih kosong.");
+      setErrorMsg("Keranjang masih kosong.");
       return;
     }
 
     setLoading(true);
-    const activeKdCus = customerInfo.kd_cus || "A135";
+    const activeKdCus = String(customerInfo.kd_cus || "A135").trim();
 
     try {
       const now = new Date();
-      const today = now.toISOString().split("T")[0];
+      const today = getLocalDateYYYYMMDD(now);
       const jamSekarang = now.toLocaleTimeString("id-ID", { hour12: false });
-      const namaUserLogin = customerInfo.nama || customerInfo.user || "Sunarto";
+      const namaUserLogin = customerInfo.nama || customerInfo.user || "ADMIN";
       const roundedTotal = Math.round(subtotal);
 
-      // STEP 1: Simpan PO Note Header (Lengkap dengan JAM dan NAMA ADMIN)
       const headerPayload = {
-        // Tanggal PO
         tgl: today,
         TGL: today,
-
-        // Jam Pemesanan
         jam: jamSekarang,
         JAM: jamSekarang,
-
-        // Tanggal Kirim & Keterangan
         tgl_kirim: deliveryDate,
         TGL_KIRIM: deliveryDate,
         ket: deliveryDate ? `Kirim: ${deliveryDate}` : "dtg sendiri",
         KET: deliveryDate ? `Kirim: ${deliveryDate}` : "dtg sendiri",
-
-        // Kode Customer & Pelanggan
-        kd_cus: String(activeKdCus).trim(),
-        KD_CUS: String(activeKdCus).trim(),
+        kd_cus: activeKdCus,
+        KD_CUS: activeKdCus,
         nama_pelanggan: customerInfo.nama,
         NAMA_PELANGGAN: customerInfo.nama,
-
-        // Status
         status: "PROSES PENGAMBILAN",
         STATUS: "PROSES PENGAMBILAN",
-
-        // Total Nominal PO
         total: roundedTotal,
         TOTAL: roundedTotal,
         jumlah: roundedTotal,
@@ -239,8 +271,6 @@ export default function CartPage() {
         RP_TOTAL: roundedTotal,
         nilai_po: roundedTotal,
         NILAI_PO: roundedTotal,
-
-        // Nama Admin / Pemesan (User yang sedang login)
         nama_admin: namaUserLogin,
         NAMA_ADMIN: namaUserLogin,
         nama_adm: namaUserLogin,
@@ -253,8 +283,6 @@ export default function CartPage() {
         USER: namaUserLogin,
         kpb: namaUserLogin,
         KPB: namaUserLogin,
-
-        // Jenis
         jenis: "ADMIN",
         JENIS: "ADMIN",
       };
@@ -270,8 +298,6 @@ export default function CartPage() {
       });
 
       const resultHeader = await resHeader.json();
-      console.log("Response PO Note:", resultHeader);
-
       if (!resHeader.ok || (resultHeader.success !== undefined && !resultHeader.success)) {
         throw new Error(resultHeader.message || "Gagal membuat Header PO Note");
       }
@@ -279,11 +305,10 @@ export default function CartPage() {
       const createdKdTran = extractKdTran(resultHeader);
       if (!createdKdTran) {
         throw new Error(
-          "Nomor transaksi (kd_tran) tidak ditemukan dari server: " + JSON.stringify(resultHeader)
+          "Nomor transaksi (kd_tran) tidak ditemukan dari server."
         );
       }
 
-      // STEP 2: Filter item valid
       const validItems = items.filter((item: any) => {
         const product = item.product || item;
         const kdBr = String(product.kd_br || product.kd || product.id || "").trim();
@@ -295,7 +320,6 @@ export default function CartPage() {
         throw new Error("Tidak ada barang valid di keranjang");
       }
 
-      // STEP 3: Kirim semua barang sekaligus sesuai format DetailPoPLGController
       const bulkPayload = {
         items: validItems.map((item: any, idx: number) => {
           const product = item.product || item;
@@ -306,12 +330,13 @@ export default function CartPage() {
           const namaBr = String(product.nama || product.name || product.nama_br || "").trim();
           const kd = String(product.kd || "").trim();
           const lineSubtotal = Math.round(price * qty);
+          const rasaVal = getItemRasa(item, idx).trim();
 
           return {
             no_tran: parseInt(String(createdKdTran), 10),
             NO_URUT: idx + 1,
             KD_BR: kdBr,
-            RASA: product.rasa || "-",
+            RASA: rasaVal || "-",
             QTY: Math.round(qty),
             SAT: satuan,
             harga: Math.round(price),
@@ -321,8 +346,6 @@ export default function CartPage() {
           };
         }),
       };
-
-      console.log(`Mengirim seluruh ${validItems.length} item ke PO ${createdKdTran}...`, bulkPayload);
 
       const resDetail = await fetch(getEndpoint("detail-po-plg/bulk"), {
         method: "POST",
@@ -335,18 +358,38 @@ export default function CartPage() {
       });
 
       const resultDetail = await resDetail.json();
-      console.log("Hasil simpan detail:", resultDetail);
-
       if (!resDetail.ok || (resultDetail.success !== undefined && !resultDetail.success)) {
         throw new Error(resultDetail.message || "Gagal menyimpan rincian pesanan");
       }
 
-      alert(`Pesanan Berhasil Disimpan!\nNo PO: ${createdKdTran}\nTotal: Rp ${roundedTotal.toLocaleString("id-ID")}`);
+      // Pesan WA ringkas tanpa rincian barang (diganti Segera Proses)
+      const waMessage = [
+        "*INFO PESANAN BARU (PO)*",
+        `No PO: *${createdKdTran}*`,
+        `Pelanggan: ${customerInfo.nama} (${activeKdCus})`,
+        `Tgl Kirim: ${formatDateDDMMYYYY(deliveryDate)}`,
+        "",
+        `Total Item: ${totalItemCount} item`,
+        `*Total Akhir: Rp ${roundedTotal.toLocaleString("id-ID")}*`,
+        "",
+        "*Segera Proses*",
+      ].join("\n");
+
+      const targetWA = adminWA || getLocalAdminWA();
+      const waUrl = buildWhatsAppUrl(targetWA, waMessage);
+
       if (clearCart) clearCart();
-      router.push("/laporan/laporanpo");
+      setRasaMap({});
+      setSuccessInfo({
+        kdTran: createdKdTran,
+        total: roundedTotal,
+        waUrl,
+      });
+
+      window.open(waUrl, "_blank", "noopener,noreferrer");
     } catch (err: any) {
       console.error("Error order:", err);
-      alert(`Gagal menyimpan: ${err.message || "Terjadi kesalahan koneksi"}`);
+      setErrorMsg(err.message || "Terjadi kesalahan koneksi saat menyimpan pesanan.");
     } finally {
       setLoading(false);
     }
@@ -359,7 +402,6 @@ export default function CartPage() {
       </Head>
 
       <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6 min-h-screen text-xs">
-        {/* MENU ATAS */}
         <div className="flex items-center justify-between border-b border-slate-300 bg-slate-200 rounded-t-xl px-3 py-2 mb-3">
           <span className="font-bold text-blue-700 text-xs sm:text-sm">
             Keranjang Belanja
@@ -374,7 +416,23 @@ export default function CartPage() {
           </Link>
         </div>
 
-        {items.length === 0 ? (
+        {errorMsg && (
+          <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FiAlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMsg(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              <FiX className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {items.length === 0 && !successInfo ? (
           <div className="bg-white rounded-b-xl p-8 sm:p-12 text-center shadow-xs border border-slate-200">
             <p className="text-slate-500 text-xs sm:text-sm mb-4">
               Keranjang belanja Anda masih kosong.
@@ -388,7 +446,6 @@ export default function CartPage() {
           </div>
         ) : (
           <div className="bg-white rounded-b-xl shadow-xs border border-slate-200 p-3 sm:p-5 space-y-4">
-            {/* INFO PELANGGAN */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 pb-3 border-b border-slate-200">
               <div className="md:col-span-7 space-y-1.5">
                 <div className="flex items-center gap-2">
@@ -413,14 +470,17 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* TABEL ITEM */}
+            {/* TABEL ITEM DENGAN KOLOM VARIAN / RASA TERPISAH */}
             <div className="overflow-x-auto border border-slate-300 rounded-lg">
               <table className="w-full text-left border-collapse text-[11px] sm:text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-slate-700 border-b border-slate-300 font-semibold">
                     <th className="p-2 border-r border-slate-300 w-8 text-center">No</th>
-                    <th className="p-2 border-r border-slate-300 min-w-[120px]">
-                      Keterangan / Nama Barang & Varian (Klik untuk Edit/Hapus)
+                    <th className="p-2 border-r border-slate-300 min-w-[150px]">
+                      Keterangan / Nama Barang (Klik untuk Edit/Hapus)
+                    </th>
+                    <th className="p-2 border-r border-slate-300 w-32 sm:w-44 text-center">
+                      Varian / Rasa
                     </th>
                     <th className="p-2 border-r border-slate-300 w-28 sm:w-36 text-center">Jumlah</th>
                     <th className="p-2 border-r border-slate-300 w-16 text-center">Satuan</th>
@@ -434,11 +494,13 @@ export default function CartPage() {
                     const price = parsePrice(product.h_anggota || product.price || product.hpp);
                     const qty = item.quantity || item.qty || 1;
                     const itemId = product.kd_br || product.kd || product.id || idx;
+                    const itemKey = String(itemId);
                     const lineTotal = price * qty;
+                    const rasaVal = getItemRasa(item, idx);
 
                     return (
                       <tr
-                        key={idx}
+                        key={itemKey}
                         className="hover:bg-blue-50/50 transition-colors cursor-pointer"
                       >
                         <td
@@ -451,12 +513,26 @@ export default function CartPage() {
                         <td
                           onClick={() => handleOpenEditModal(item, idx)}
                           className="p-2 border-r border-slate-200 font-semibold text-blue-900"
-                          title="Klik untuk Edit Qty atau Hapus"
+                          title="Klik untuk Edit Qty, Varian, atau Hapus"
                         >
                           <div className="flex items-center gap-1.5">
                             <span className="hover:underline">{product.nama || product.name}</span>
                             <span className="text-[10px] text-blue-500 italic">✎</span>
                           </div>
+                        </td>
+
+                        <td
+                          className="p-1.5 border-r border-slate-200"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="text"
+                            maxLength={60}
+                            value={rasaVal}
+                            onChange={(e) => handleRasaChange(itemKey, e.target.value)}
+                            placeholder="Varian / rasa..."
+                            className="w-full px-2 py-1 text-[11px] font-normal text-slate-800 bg-slate-50 border border-slate-300 rounded-md focus:bg-white focus:border-blue-500 focus:outline-none"
+                          />
                         </td>
 
                         <td className="p-1 border-r border-slate-200 text-center">
@@ -520,7 +596,6 @@ export default function CartPage() {
               </table>
             </div>
 
-            {/* TANGGAL KIRIM & RINGKASAN */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 pt-2">
               <div className="md:col-span-7 space-y-2">
                 <div className="flex items-center gap-2">
@@ -546,7 +621,6 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* TOMBOL AKSI BAWAH */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-200 gap-2">
               <button
                 type="button"
@@ -568,7 +642,47 @@ export default function CartPage() {
           </div>
         )}
 
-        {/* MODAL EDIT / HAPUS */}
+        {/* MODAL SUKSES + KIRIM WA ADMIN */}
+        {successInfo && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 text-center">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                <FiCheckCircle className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-slate-800 text-base">
+                  Pesanan Berhasil Disimpan
+                </h3>
+                <p className="text-xs text-slate-600">
+                  No PO: <span className="font-mono font-bold text-blue-700">{successInfo.kdTran}</span>
+                </p>
+                <p className="text-sm font-extrabold text-slate-900 font-mono">
+                  Rp {successInfo.total.toLocaleString("id-ID")}
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <a
+                  href={successInfo.waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-95 transition"
+                >
+                  <FiMessageCircle className="w-4 h-4" /> Kirim Info ke WA Admin
+                </a>
+                <button
+                  type="button"
+                  onClick={() => router.push("/laporan/laporanpo")}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                >
+                  Lihat Laporan PO
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL EDIT / HAPUS (DENGAN INPUT VARIAN RASA) */}
         {showEditModal && selectedItem && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -594,6 +708,31 @@ export default function CartPage() {
                     <span>Satuan: {(selectedItem.product || selectedItem).satuan || "DUS"}</span>
                     <span>Harga: Rp {parsePrice((selectedItem.product || selectedItem).h_anggota || (selectedItem.product || selectedItem).price).toLocaleString("id-ID")}</span>
                   </div>
+                </div>
+
+                {/* Input Varian / Rasa di Modal */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Varian / Rasa (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={60}
+                    value={
+                      selectedIdx !== null
+                        ? getItemRasa(selectedItem, selectedIdx)
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const product = selectedItem.product || selectedItem;
+                      const itemKey = String(
+                        product.kd_br || product.kd || product.id || selectedIdx
+                      );
+                      handleRasaChange(itemKey, e.target.value);
+                    }}
+                    placeholder="Contoh: Tomat, Pedas, Original..."
+                    className="w-full px-3 py-2 text-xs text-slate-800 bg-white border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+                  />
                 </div>
 
                 <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
