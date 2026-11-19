@@ -1,3 +1,4 @@
+// src/pages/order-kasir.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -21,6 +22,7 @@ import {
 } from "react-icons/fi";
 import {
   buildWhatsAppUrl,
+  fetchAdminWA,
   getLocalAdminWA,
   getLocalDateYYYYMMDD,
   formatDateDDMMYYYY,
@@ -112,10 +114,16 @@ export default function OrderKasirPage() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  // Muat draft tersimpan & info user saat halaman dibuka
+  // Muat draft tersimpan, nomor WA admin dari database, & info user saat halaman dibuka
   useEffect(() => {
     setDeliveryDate(getLocalDateYYYYMMDD());
     setAdminWA(getLocalAdminWA());
+
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    fetchAdminWA(apiUrl, token).then((wa) => {
+      if (wa) setAdminWA(wa);
+    });
 
     try {
       const savedDraft = localStorage.getItem(KASIR_DRAFT_KEY);
@@ -587,7 +595,9 @@ export default function OrderKasirPage() {
         "*Segera Proses*",
       ].join("\n");
 
-      const targetWA = adminWA || getLocalAdminWA();
+      const latestAdminWA = await fetchAdminWA(apiUrl, token);
+      const targetWA = latestAdminWA || adminWA || getLocalAdminWA();
+      if (latestAdminWA) setAdminWA(latestAdminWA);
       const waUrl = buildWhatsAppUrl(targetWA, waMessage);
 
       // Hapus draft tersimpan setelah sukses simpan PO

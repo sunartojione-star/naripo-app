@@ -15,15 +15,46 @@ import {
   FiEdit2,
   FiCheckCircle,
   FiX,
+  FiMessageCircle,
+  FiAlertCircle,
 } from "react-icons/fi";
 import { useCartStoreBS } from "@/store/cartStoreBS";
+import {
+  fetchAdminWA,
+  buildWhatsAppUrl,
+  getLocalAdminWA,
+  getLocalDateYYYYMMDD,
+  formatDateDDMMYYYY,
+} from "@/utils/waHelper";
+
+function extractKdTranBS(res: any): string | number | null {
+  if (!res) return null;
+  if (typeof res === "number" || (typeof res === "string" && res.trim() !== "")) {
+    return res;
+  }
+  if (typeof res === "object") {
+    const keys = ["kd_tran", "KD_TRAN", "id", "ID"];
+    for (const k of keys) {
+      if (res[k] !== undefined && res[k] !== null && res[k] !== "") return res[k];
+    }
+    if (res.data) return extractKdTranBS(res.data);
+  }
+  return null;
+}
 
 export default function KeranjangBSPage() {
   const router = useRouter();
   const [keterangan, setKeterangan] = useState("");
   const [loading, setLoading] = useState(false);
+  const [adminWA, setAdminWA] = useState("");
 
-  // State Modal Popup Edit / Hapus
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<{
+    kdTran: string | number;
+    total: number;
+    waUrl: string;
+  } | null>(null);
+
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -54,6 +85,10 @@ export default function KeranjangBSPage() {
   };
 
   useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    fetchAdminWA(apiUrl, token).then(setAdminWA);
+
     try {
       const savedUserStr = localStorage.getItem("user");
       const localKdCus =
@@ -78,7 +113,7 @@ export default function KeranjangBSPage() {
     } catch (err) {
       console.error("Gagal parse user data:", err);
     }
-  }, []);
+  }, [apiUrl]);
 
   const parsePrice = (price: any): number => {
     if (typeof price === "number") return price;
@@ -130,30 +165,30 @@ export default function KeranjangBSPage() {
   };
 
   const handleOrder = async () => {
+    setErrorMsg(null);
+
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
       router.push("/login");
       return;
     }
 
     if (items.length === 0) {
-      alert("Keranjang masih kosong.");
+      setErrorMsg("Keranjang BS masih kosong.");
       return;
     }
 
     setLoading(true);
-    const activeKdCus = customerInfo.kd_cus || "A135";
-    let createdKdTran: number | null = null;
+    const activeKdCus = String(customerInfo.kd_cus || "A135").trim();
 
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = getLocalDateYYYYMMDD();
       const roundedTotal = Math.round(subtotal);
 
       const headerPayload = {
         tgl: today,
-        kd_cus: String(activeKdCus).trim(),
+        kd_cus: activeKdCus,
         ket: keterangan ? keterangan : "Pesanan Barang Sisa (BS)",
         status_cek: "Sudah DiCek",
         nilai_sementara: roundedTotal,
@@ -171,11 +206,14 @@ export default function KeranjangBSPage() {
       });
 
       const resultHeader = await resHeader.json();
-      if (!resHeader.ok || !resultHeader.success) {
+      if (!resHeader.ok || (resultHeader.success !== undefined && !resultHeader.success)) {
         throw new Error(resultHeader.message || "Gagal membuat Header BS Cus");
       }
 
-      createdKdTran = resultHeader.data?.kd_tran || resultHeader.data?.id;
+      const createdKdTran = extractKdTranBS(resultHeader);
+      if (!createdKdTran) {
+        throw new Error("Nomor transaksi BS (kd_tran) tidak ditemukan dari server.");
+      }
 
       const bulkPayload = {
         items: items.map((item: any, index: number) => {
@@ -209,21 +247,39 @@ export default function KeranjangBSPage() {
       });
 
       const resultDetail = await resDetail.json();
-      if (!resDetail.ok || !resultDetail.success) {
+      if (!resDetail.ok || (resultDetail.success !== undefined && !resultDetail.success)) {
         throw new Error(
           resultDetail.message || "Gagal menyimpan rincian pesanan BS"
         );
       }
 
-      alert(
-        `Pesanan BS Berhasil Disimpan!\nNo. Transaksi: ${createdKdTran}\nTotal: Rp ${roundedTotal.toLocaleString(
-          "id-ID"
-        )}`
-      );
+      const waMessage = [
+        "*INFO PESANAN BARANG SISA (BS)*",
+        `No Transaksi: *${createdKdTran}*`,
+        `Pelanggan: ${customerInfo.nama} (${activeKdCus})`,
+        `Tanggal: ${formatDateDDMMYYYY(today)}`,
+        `Catatan: ${keterangan || "-"}`,
+        "",
+        `Total Item: ${totalItemCount} item`,
+        `*Total Akhir: Rp ${roundedTotal.toLocaleString("id-ID")}*`,
+        "",
+        "*Segera Proses*",
+      ].join("\n");
+
+      const targetWA =
+        (await fetchAdminWA(apiUrl, token)) || adminWA || getLocalAdminWA();
+      const waUrl = buildWhatsAppUrl(targetWA, waMessage);
+
       if (clearCart) clearCart();
-      router.push("/BS/halamanBS");
+      setSuccessInfo({
+        kdTran: createdKdTran,
+        total: roundedTotal,
+        waUrl,
+      });
+
+      window.open(waUrl, "_blank", "noopener,noreferrer");
     } catch (err: any) {
-      alert(`Gagal menyimpan: ${err.message || "Terjadi kesalahan koneksi"}`);
+      setErrorMsg(err.message || "Terjadi kesalahan koneksi saat menyimpan pesanan BS.");
     } finally {
       setLoading(false);
     }
@@ -236,7 +292,6 @@ export default function KeranjangBSPage() {
       </Head>
 
       <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-4 py-3 sm:py-5 min-h-screen text-xs">
-        {/* HEADER RINGKAS 1 BARIS */}
         <div className="flex items-center justify-between gap-2 bg-slate-100 border border-slate-200 rounded-t-2xl px-3 py-2.5">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
@@ -261,7 +316,23 @@ export default function KeranjangBSPage() {
           </Link>
         </div>
 
-        {items.length === 0 ? (
+        {errorMsg && (
+          <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FiAlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMsg(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              <FiX className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {items.length === 0 && !successInfo ? (
           <div className="bg-white rounded-b-2xl p-8 sm:p-12 text-center shadow-xs border-x border-b border-slate-200">
             <p className="text-slate-500 text-xs sm:text-sm mb-4">
               Keranjang BS kosong, belum ada item.
@@ -275,7 +346,6 @@ export default function KeranjangBSPage() {
           </div>
         ) : (
           <div className="bg-white rounded-b-2xl shadow-xs border-x border-b border-slate-200 p-3 sm:p-5 space-y-4">
-            {/* INFO PELANGGAN */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 pb-3 border-b border-slate-200">
               <div className="md:col-span-7 space-y-1">
                 <div className="flex items-center gap-2">
@@ -312,14 +382,11 @@ export default function KeranjangBSPage() {
               </div>
             </div>
 
-            {/* TABEL ITEM (KLIK BARIS UNTUK EDIT/HAPUS) */}
             <div className="overflow-x-auto border border-slate-300 rounded-xl">
               <table className="w-full text-left border-collapse text-[11px] sm:text-xs">
                 <thead>
                   <tr className="bg-slate-100 text-slate-700 border-b border-slate-300 font-semibold">
-                    <th className="p-2 border-r border-slate-300 w-8 text-center">
-                      No
-                    </th>
+                    <th className="p-2 border-r border-slate-300 w-8 text-center">No</th>
                     <th className="p-2 border-r border-slate-300 min-w-[120px]">
                       Nama BS (Klik untuk Edit/Hapus)
                     </th>
@@ -347,7 +414,7 @@ export default function KeranjangBSPage() {
 
                     return (
                       <tr
-                        key={idx}
+                        key={itemId}
                         className="hover:bg-amber-50/50 transition-colors cursor-pointer"
                       >
                         <td
@@ -430,7 +497,6 @@ export default function KeranjangBSPage() {
               </table>
             </div>
 
-            {/* CATATAN & RINGKASAN */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 sm:gap-4 pt-1">
               <div className="md:col-span-7 space-y-1.5">
                 <label className="block text-slate-700 font-semibold text-xs">
@@ -461,7 +527,6 @@ export default function KeranjangBSPage() {
               </div>
             </div>
 
-            {/* TOMBOL AKSI BAWAH */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-200 gap-2">
               <button
                 type="button"
@@ -483,7 +548,45 @@ export default function KeranjangBSPage() {
           </div>
         )}
 
-        {/* POPUP MODAL: EDIT QTY & HAPUS ITEM BS */}
+        {successInfo && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 text-center">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                <FiCheckCircle className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-slate-800 text-base">
+                  Pesanan BS Berhasil Disimpan
+                </h3>
+                <p className="text-xs text-slate-600">
+                  No. Transaksi: <span className="font-mono font-bold text-amber-700">{successInfo.kdTran}</span>
+                </p>
+                <p className="text-sm font-extrabold text-slate-900 font-mono">
+                  Rp {successInfo.total.toLocaleString("id-ID")}
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <a
+                  href={successInfo.waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-95 transition"
+                >
+                  <FiMessageCircle className="w-4 h-4" /> Kirim Info ke WA Admin
+                </a>
+                <button
+                  type="button"
+                  onClick={() => router.push("/BS/halamanBS")}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                >
+                  Kembali ke Daftar BS
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showEditModal && selectedItem && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">

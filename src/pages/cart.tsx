@@ -20,6 +20,7 @@ import {
 } from "react-icons/fi";
 import { useCartStore } from "@/store/cartStore";
 import {
+  fetchAdminWA,
   buildWhatsAppUrl,
   getLocalAdminWA,
   getLocalDateYYYYMMDD,
@@ -81,10 +82,7 @@ export default function CartPage() {
   const [loading, setLoading] = useState(false);
   const [adminWA, setAdminWA] = useState("");
 
-  // State Varian / Rasa per item (key = itemId)
   const [rasaMap, setRasaMap] = useState<Record<string, string>>({});
-
-  // State Notifikasi & Modal Sukses WA
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{
     kdTran: string | number;
@@ -92,12 +90,10 @@ export default function CartPage() {
     waUrl: string;
   } | null>(null);
 
-  // State Modal Edit / Hapus Item
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
-  // State Informasi User / Pelanggan
   const [customerInfo, setCustomerInfo] = useState({
     nama: "CUSTOMER",
     alamat: "-",
@@ -125,7 +121,9 @@ export default function CartPage() {
 
   useEffect(() => {
     setDeliveryDate(getLocalDateYYYYMMDD());
-    setAdminWA(getLocalAdminWA());
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    fetchAdminWA(apiUrl, token).then(setAdminWA);
 
     try {
       const savedUserStr = localStorage.getItem("user");
@@ -150,7 +148,7 @@ export default function CartPage() {
     } catch (err) {
       console.error("Gagal parse user data:", err);
     }
-  }, []);
+  }, [apiUrl]);
 
   useEffect(() => {
     setRasaMap((prev) => {
@@ -362,7 +360,6 @@ export default function CartPage() {
         throw new Error(resultDetail.message || "Gagal menyimpan rincian pesanan");
       }
 
-      // Pesan WA ringkas tanpa rincian barang (diganti Segera Proses)
       const waMessage = [
         "*INFO PESANAN BARU (PO)*",
         `No PO: *${createdKdTran}*`,
@@ -375,7 +372,9 @@ export default function CartPage() {
         "*Segera Proses*",
       ].join("\n");
 
-      const targetWA = adminWA || getLocalAdminWA();
+      // Selalu utamakan nomor terbaru dari database cabang (/api/setting)
+      const targetWA =
+        (await fetchAdminWA(apiUrl, token)) || adminWA || getLocalAdminWA();
       const waUrl = buildWhatsAppUrl(targetWA, waMessage);
 
       if (clearCart) clearCart();
@@ -470,7 +469,6 @@ export default function CartPage() {
               </div>
             </div>
 
-            {/* TABEL ITEM DENGAN KOLOM VARIAN / RASA TERPISAH */}
             <div className="overflow-x-auto border border-slate-300 rounded-lg">
               <table className="w-full text-left border-collapse text-[11px] sm:text-xs">
                 <thead>
@@ -642,7 +640,6 @@ export default function CartPage() {
           </div>
         )}
 
-        {/* MODAL SUKSES + KIRIM WA ADMIN */}
         {successInfo && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-5 space-y-4 text-center">
@@ -682,7 +679,6 @@ export default function CartPage() {
           </div>
         )}
 
-        {/* MODAL EDIT / HAPUS (DENGAN INPUT VARIAN RASA) */}
         {showEditModal && selectedItem && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
@@ -710,7 +706,6 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                {/* Input Varian / Rasa di Modal */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-700">
                     Varian / Rasa (Opsional)

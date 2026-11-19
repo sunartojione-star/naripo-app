@@ -2,7 +2,7 @@
 
 const STORAGE_KEY = "naripo_admin_wa";
 const LIST_STORAGE_KEY = "naripo_admin_wa_list";
-const DEFAULT_ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WA || "6282112927314";
+const DEFAULT_ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WA || "";
 
 export interface AdminWAContact {
   id: string;
@@ -115,7 +115,8 @@ export async function fetchSettingData(
     });
     if (!res.ok) return null;
     const json = await res.json();
-    const row = json?.data || json;
+    const raw = json?.data ?? json;
+    const row = Array.isArray(raw) ? raw[0] : raw;
     if (row) {
       return {
         Nama: String(row.Nama || row.nama || ""),
@@ -169,7 +170,8 @@ export async function fetchAdminWA(
 }
 
 export function buildWhatsAppUrl(phone: string, message: string): string {
-  const normalized = normalizePhoneWA(phone) || normalizePhoneWA(DEFAULT_ADMIN_WA);
+  const normalized =
+    normalizePhoneWA(phone) || normalizePhoneWA(DEFAULT_ADMIN_WA);
   const encodedText = encodeURIComponent(message);
   return `https://wa.me/${normalized}?text=${encodedText}`;
 }
