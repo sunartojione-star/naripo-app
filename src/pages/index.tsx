@@ -22,6 +22,7 @@ import {
   FiMessageCircle,
   FiMaximize,
   FiUserCheck,
+  FiPackage,
 } from "react-icons/fi";
 
 export default function Home() {
@@ -32,6 +33,7 @@ export default function Home() {
   const [errorProducts, setErrorProducts] = useState<string>("");
   const [needsLogin, setNeedsLogin] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string>("");
+  const [isAdminFlag, setIsAdminFlag] = useState<boolean>(false);
   const [selectedProduct, setSelectedProduct] = useState<Barang | null>(null);
 
   const router = useRouter();
@@ -39,9 +41,11 @@ export default function Home() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  const isAdmin = ["admin", "super admin", "superadmin"].includes(
-    userRole.trim().toLowerCase()
-  );
+  const isAdmin =
+    isAdminFlag ||
+    ["admin", "super admin", "superadmin"].includes(
+      userRole.trim().toLowerCase()
+    );
 
   useEffect(() => {
     setIsMounted(true);
@@ -50,7 +54,14 @@ export default function Home() {
       try {
         const parsedUser = JSON.parse(storedUser);
         setUserRole(
-          parsedUser.role || parsedUser.Hak || parsedUser.level_user || ""
+          String(
+            parsedUser.role || parsedUser.Hak || parsedUser.level_user || ""
+          )
+        );
+        setIsAdminFlag(
+          parsedUser.is_admin === true ||
+            parsedUser.is_admin === 1 ||
+            Number(parsedUser.level_user) === 1
         );
       } catch (e) {
         console.error("Gagal parsing data user", e);
@@ -353,6 +364,14 @@ export default function Home() {
                     >
                       <FiUserCheck className="w-3.5 h-3.5 shrink-0" />
                       <span>DATA USERS</span>
+                    </Link>
+
+                    <Link
+                      href="/detail-barang"
+                      className="col-span-2 sm:col-span-1 bg-cyan-600 hover:bg-cyan-700 active:scale-95 text-white px-2 py-2 rounded-lg font-bold transition shadow-xs flex items-center justify-center gap-1.5 text-[11px] sm:text-xs"
+                    >
+                      <FiPackage className="w-3.5 h-3.5 shrink-0" />
+                      <span>DETAIL BARANG</span>
                     </Link>
                   </div>
                 </div>

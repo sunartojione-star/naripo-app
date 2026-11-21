@@ -22,6 +22,7 @@ import {
   FiCreditCard,
   FiTrendingUp,
   FiTruck,
+  FiPackage,
 } from "react-icons/fi";
 import { useCartStoreBS } from "@/store/cartStoreBS";
 import { useCartStore } from "@/store/cartStore";
@@ -119,10 +120,17 @@ export default function Header() {
         setUserName(userObj.name || userObj.nama || "User");
         setUserFoto(userObj.foto || "");
 
-        const role =
-          userObj.role || userObj.Hak || userObj.level_user || userObj.level || "";
+        const role = String(
+          userObj.role || userObj.Hak || userObj.level_user || userObj.level || ""
+        )
+          .trim()
+          .toLowerCase();
         const checkIsAdmin =
-          String(role).toLowerCase() === "admin" ||
+          role === "admin" ||
+          role === "super admin" ||
+          role === "superadmin" ||
+          role === "kasir" ||
+          Number(userObj.level_user) === 1 ||
           userObj.is_admin === true ||
           userObj.is_admin === 1;
 
@@ -289,9 +297,22 @@ export default function Header() {
           <FiChevronRight className="w-3.5 h-3.5 text-slate-400" />
         </Link>
 
-        {/* Menu tambahan laporan HANYA MUNCUL JIKA ISADMIN BERNILAI TRUE */}
+        {/* Menu tambahan khusus Admin HANYA MUNCUL JIKA ISADMIN BERNILAI TRUE */}
         {isAdmin && (
           <div className="border-t border-slate-100 my-1 pt-1">
+            <Link
+              href="/detail-barang"
+              onClick={() => setIsProfileOpen(false)}
+              className="flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
+                  <FiPackage className="w-3.5 h-3.5" />
+                </span>
+                <span>Detail Barang</span>
+              </div>
+            </Link>
+
             <Link
               href="/laporan/labarugi"
               onClick={() => setIsProfileOpen(false)}
