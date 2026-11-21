@@ -85,6 +85,10 @@ export default function HalamanOpname() {
   const mobileQtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const desktopQtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const quickOptionRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const quickSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const quickAbortRef = useRef<AbortController | null>(null);
 
   // Input Cepat / Barcode Scanner di Atas Keranjang State
   const [quickKeyword, setQuickKeyword] = useState<string>("");
@@ -202,9 +206,13 @@ export default function HalamanOpname() {
     }
   }, [quickHighlight, showQuickDropdown]);
 
-  // Bersihkan stream kamera jika komponen di-unmount
+  // Bersihkan timer, request, dan stream kamera jika komponen di-unmount
   useEffect(() => {
     return () => {
+      if (quickSearchTimerRef.current) {
+        clearTimeout(quickSearchTimerRef.current);
+      }
+      quickAbortRef.current?.abort();
       if (html5QrCodeRef.current) {
         try {
           html5QrCodeRef.current.stop();
@@ -352,6 +360,11 @@ export default function HalamanOpname() {
 
   // Tambah Barang ke Keranjang Opname (Muncul hanya saat diketik/scan)
   const addItemToKeranjang = (barang: Barang) => {
+    if (quickSearchTimerRef.current) {
+      clearTimeout(quickSearchTimerRef.current);
+    }
+    quickAbortRef.current?.abort();
+
     const targetIndex = items.length;
     const hpp = getBarangHppTerakhir(barang);
 
@@ -389,18 +402,105 @@ export default function HalamanOpname() {
     }, 60);
   };
 
+  // Ambil SEMUA hasil pencarian barang (multi-halaman paralel jika dipaginasi server)
+  const fetchAllMatchingBarangs = async (
+    keyword: string,
+    signal?: AbortSignal
+  ): Promise<Barang[]> => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    const perPage = 200;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    const firstRes = await fetch(
+      `${apiUrl}/barangs?search=${encodeURIComponent(
+        keyword
+      )}&page=1&limit=${perPage}`,
+      { headers, signal }
+    );
+
+    if (firstRes.status === 401) {
+      router.replace("/login");
+      return [];
+    }
+
+    const firstJson = await firstRes.json();
+    if (!firstRes.ok) return [];
+
+    const firstList: Barang[] = Array.isArray(firstJson)
+      ? firstJson
+      : Array.isArray(firstJson?.data)
+      ? firstJson.data
+      : [];
+
+    const totalPages =
+      Number(
+        firstJson?.pagination?.total_pages ??
+          firstJson?.meta?.last_page ??
+          firstJson?.last_page ??
+          1
+      ) || 1;
+
+    if (totalPages <= 1) {
+      return firstList;
+    }
+
+    const pageNumbers = Array.from(
+      { length: totalPages - 1 },
+      (_, idx) => idx + 2
+    );
+
+    const restPages = await Promise.all(
+      pageNumbers.map(async (page) => {
+        try {
+          const res = await fetch(
+            `${apiUrl}/barangs?search=${encodeURIComponent(
+              keyword
+            )}&page=${page}&limit=${perPage}`,
+            { headers, signal }
+          );
+          if (!res.ok) return [];
+          const json = await res.json();
+          return Array.isArray(json)
+            ? json
+            : Array.isArray(json?.data)
+            ? json.data
+            : [];
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    const combined = [...firstList, ...restPages.flat()];
+    const seen = new Set<string>();
+    return combined.filter((b) => {
+      const key = String(b?.kd_br || "").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
   // Live Search & Scan dengan Alat Barcode di Laptop
-  const handleQuickSearchChange = async (keyword: string) => {
+  const handleQuickSearchChange = (keyword: string) => {
     setQuickKeyword(keyword);
     const trimmed = keyword.trim();
+
+    if (quickSearchTimerRef.current) {
+      clearTimeout(quickSearchTimerRef.current);
+    }
+    quickAbortRef.current?.abort();
+
     if (!trimmed) {
       setQuickResults([]);
       setShowQuickDropdown(false);
+      setQuickSearching(false);
       return;
     }
-
-    setQuickSearching(true);
-    setShowQuickDropdown(true);
 
     const localMatch = quickResults.find(
       (b) =>
@@ -410,25 +510,20 @@ export default function HalamanOpname() {
 
     if (localMatch) {
       addItemToKeranjang(localMatch);
-      setQuickSearching(false);
       return;
     }
 
-    const token =
-      localStorage.getItem("token") || localStorage.getItem("auth_token");
-    try {
-      const res = await fetch(
-        `${apiUrl}/barangs?search=${encodeURIComponent(trimmed)}&limit=10`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: token ? `Bearer ${token}` : "",
-          },
-        }
-      );
-      const json = await res.json();
-      if (res.ok) {
-        const list: Barang[] = json.data || json || [];
+    setQuickSearching(true);
+    setShowQuickDropdown(true);
+
+    quickSearchTimerRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      quickAbortRef.current = controller;
+
+      try {
+        const list = await fetchAllMatchingBarangs(trimmed, controller.signal);
+        if (controller.signal.aborted) return;
+
         setQuickResults(list);
 
         const exactMatch = list.find(
@@ -440,12 +535,16 @@ export default function HalamanOpname() {
         if (exactMatch) {
           addItemToKeranjang(exactMatch);
         }
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.error("Gagal cari barang cepat:", err);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setQuickSearching(false);
+        }
       }
-    } catch (err) {
-      console.error("Gagal cari barang cepat:", err);
-    } finally {
-      setQuickSearching(false);
-    }
+    }, 150);
   };
 
   // Handler Keyboard (Panah, PgUp/PgDn, Home/End, Enter, Esc) pada Input Pencarian Cepat
@@ -516,19 +615,7 @@ export default function HalamanOpname() {
       }
 
       try {
-        const token =
-          localStorage.getItem("token") || localStorage.getItem("auth_token");
-        const res = await fetch(
-          `${apiUrl}/barangs?search=${encodeURIComponent(kw)}&limit=5`,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
-            },
-          }
-        );
-        const json = await res.json();
-        const list: Barang[] = json.data || json || [];
+        const list = await fetchAllMatchingBarangs(kw);
         if (list.length > 0) {
           const matched =
             list.find(
@@ -953,6 +1040,7 @@ export default function HalamanOpname() {
                     type="button"
                     onClick={() => {
                       setQuickKeyword("");
+                      setQuickResults([]);
                       setShowQuickDropdown(false);
                     }}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
@@ -973,58 +1061,66 @@ export default function HalamanOpname() {
               </button>
             </div>
 
-            {/* Dropdown Rekomendasi Pencarian */}
+            {/* Dropdown Rekomendasi Pencarian (Tampil Semua) */}
             {showQuickDropdown && (
-              <div className="absolute left-0 right-0 top-full mt-1.5 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-40 max-h-64 overflow-y-auto p-1.5 space-y-1">
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-40 max-h-[60vh] overflow-y-auto p-1.5 space-y-1">
                 {quickSearching ? (
                   <div className="p-2.5 text-center text-slate-400 text-xs">
-                    Mencari barang...
+                    Mencari semua barang...
                   </div>
                 ) : quickResults.length === 0 ? (
                   <div className="p-2.5 text-center text-slate-400 text-xs">
                     Barang tidak ditemukan.
                   </div>
                 ) : (
-                  quickResults.map((b, idx) => {
-                    const isHighlighted = idx === quickHighlight;
-                    return (
-                      <div
-                        key={b.kd_br}
-                        ref={(el) => {
-                          quickOptionRefs.current[idx] = el;
-                        }}
-                        onMouseEnter={() => setQuickHighlight(idx)}
-                        onClick={() => addItemToKeranjang(b)}
-                        className={`p-2 rounded-lg cursor-pointer flex justify-between items-center transition border ${
-                          isHighlighted
-                            ? "bg-blue-700/70 border-blue-400 ring-1 ring-blue-400"
-                            : "bg-slate-900/90 hover:bg-blue-900/40 border-slate-700 hover:border-blue-500"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-mono text-blue-300 text-[11px] flex items-center gap-1.5">
-                            <span className="font-bold">{b.kd_br}</span>
-                            {b.barcode && (
-                              <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
-                                Barcode: {b.barcode}
-                              </span>
-                            )}
+                  <>
+                    <div className="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xs px-2 py-1 text-[10px] text-blue-300 font-semibold border-b border-slate-700 flex items-center justify-between">
+                      <span>Ditemukan {quickResults.length} barang</span>
+                      <span className="text-slate-400">
+                        ↑↓ / PgUp PgDn • Enter pilih
+                      </span>
+                    </div>
+                    {quickResults.map((b, idx) => {
+                      const isHighlighted = idx === quickHighlight;
+                      return (
+                        <div
+                          key={b.kd_br}
+                          ref={(el) => {
+                            quickOptionRefs.current[idx] = el;
+                          }}
+                          onMouseEnter={() => setQuickHighlight(idx)}
+                          onClick={() => addItemToKeranjang(b)}
+                          className={`p-2 rounded-lg cursor-pointer flex justify-between items-center transition border ${
+                            isHighlighted
+                              ? "bg-blue-700/70 border-blue-400 ring-1 ring-blue-400"
+                              : "bg-slate-900/90 hover:bg-blue-900/40 border-slate-700 hover:border-blue-500"
+                          }`}
+                        >
+                          <div>
+                            <div className="font-mono text-blue-300 text-[11px] flex items-center gap-1.5">
+                              <span className="font-bold">{b.kd_br}</span>
+                              {b.barcode && (
+                                <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
+                                  Barcode: {b.barcode}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-white font-medium text-xs line-clamp-1">
+                              {b.nama}
+                            </div>
                           </div>
-                          <div className="text-white font-medium text-xs line-clamp-1">
-                            {b.nama}
+                          <div className="text-right shrink-0 ml-2">
+                            <div className="text-[9px] text-slate-300">
+                              Sat: {b.satuan}
+                            </div>
+                            <div className="text-cyan-300 font-mono text-[11px] font-bold">
+                              {formatAngka(getBarangHppTerakhir(b))}
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0 ml-2">
-                          <div className="text-[9px] text-slate-300">
-                            Sat: {b.satuan}
-                          </div>
-                          <div className="text-cyan-300 font-mono text-[11px] font-bold">
-                            {formatAngka(getBarangHppTerakhir(b))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </>
                 )}
               </div>
             )}
