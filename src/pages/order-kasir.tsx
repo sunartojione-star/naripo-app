@@ -40,6 +40,27 @@ interface KasirPOItem {
   rasa: string;
 }
 
+function normalizeRole(u: any): string {
+  const raw = String(
+    u?.role || u?.Hak || u?.hak || u?.level_user || u?.level || ""
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "karyawan") return "karyawan";
+  if (raw === "pengurus") return "pengurus";
+  if (raw === "admin" || raw.includes("admin")) return "admin";
+  if (raw === "kasir") return "kasir";
+  if (raw === "customer" || raw === "pelanggan") return "customer";
+  return raw || "customer";
+}
+
+function getJenisOrderByRole(role: string): string {
+  if (role === "kasir") return "KASIR";
+  if (role === "admin" || role === "pengurus") return "ADMIN";
+  if (role === "customer") return "CUSTOMER";
+  return "ADMIN";
+}
+
 function extractKdTran(res: any): string | number | null {
   if (!res) return null;
   if (typeof res === "number" || (typeof res === "string" && res.trim() !== "")) {
@@ -78,6 +99,7 @@ function extractKdTran(res: any): string | number | null {
 export default function OrderKasirPage() {
   const router = useRouter();
 
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
@@ -115,13 +137,81 @@ export default function OrderKasirPage() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
-  // Muat draft tersimpan, nomor WA admin dari database, & info user saat halaman dibuka
+  // Cek role, muat draft tersimpan, nomor WA admin dari database, & info user saat halaman dibuka
   useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    let localRole = "";
+    try {
+      const savedUserStr = localStorage.getItem("user");
+      const localKdCus =
+        localStorage.getItem("kd_cus") || localStorage.getItem("kdCus") || "";
+      if (savedUserStr) {
+        const u = JSON.parse(savedUserStr);
+        localRole = normalizeRole(u);
+
+        if (localRole === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
+        setCustomerInfo({
+          nama: u?.name || u?.nama || "CUSTOMER",
+          user: u?.username || u?.nama || "ADMIN",
+          kd_cus: String(
+            u?.kd_cus || localKdCus || u?.username || ""
+          ).trim(),
+          jenis: getJenisOrderByRole(localRole),
+        });
+      }
+    } catch {}
+
+    setIsAuthorized(true);
     setDeliveryDate(getLocalDateYYYYMMDD());
     setAdminWA(getLocalAdminWA());
 
-    const token =
-      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    // Validasi ulang role & sesi ke /me secara non-blocking
+    fetch(`${apiUrl}/me`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    })
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        if (!res.ok) return;
+        const json = await res.json();
+        const me = json?.user || json?.data || json;
+        if (!me || typeof me !== "object") return;
+
+        const serverRole = normalizeRole(me);
+        if (serverRole === "karyawan") {
+          setIsAuthorized(false);
+          router.replace("/opname");
+          return;
+        }
+
+        const localKdCus =
+          localStorage.getItem("kd_cus") || localStorage.getItem("kdCus") || "";
+        setCustomerInfo({
+          nama: me?.name || me?.nama || "CUSTOMER",
+          user: me?.username || me?.nama || "ADMIN",
+          kd_cus: String(
+            me?.kd_cus || localKdCus || me?.username || ""
+          ).trim(),
+          jenis: getJenisOrderByRole(serverRole),
+        });
+      })
+      .catch(() => {});
+
     fetchAdminWA(apiUrl, token).then((wa) => {
       if (wa) setAdminWA(wa);
     });
@@ -140,39 +230,10 @@ export default function OrderKasirPage() {
     } catch {}
     hasLoadedDraft.current = true;
 
-    try {
-      const savedUserStr = localStorage.getItem("user");
-      const localKdCus =
-        localStorage.getItem("kd_cus") || localStorage.getItem("kdCus") || "";
-      if (savedUserStr) {
-        const u = JSON.parse(savedUserStr);
-        const roleRaw = String(
-          u?.role || u?.Hak || u?.level_user || ""
-        )
-          .trim()
-          .toUpperCase();
-        const jenisDetected =
-          roleRaw === "KASIR"
-            ? "KASIR"
-            : roleRaw.includes("ADMIN")
-            ? "ADMIN"
-            : "ADMIN";
-
-        setCustomerInfo({
-          nama: u?.name || u?.nama || "CUSTOMER",
-          user: u?.username || u?.nama || "ADMIN",
-          kd_cus: String(
-            u?.kd_cus || localKdCus || u?.username || ""
-          ).trim(),
-          jenis: jenisDetected,
-        });
-      }
-    } catch {}
-
     return () => {
       stopScanner();
     };
-  }, [apiUrl]);
+  }, [apiUrl, router]);
 
   // Simpan otomatis ke localStorage setiap kali daftar barang / catatan berubah
   useEffect(() => {
@@ -313,6 +374,10 @@ export default function OrderKasirPage() {
         }
       );
 
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
       if (!res.ok) throw new Error("Gagal mencari barang.");
       const json = await res.json();
       const list: any[] = Array.isArray(json)
@@ -505,7 +570,7 @@ export default function OrderKasirPage() {
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      router.push("/login");
+      router.replace("/login");
       return;
     }
 
@@ -583,6 +648,11 @@ export default function OrderKasirPage() {
         body: JSON.stringify(headerPayload),
       });
 
+      if (resHeader.status === 401) {
+        router.replace("/login");
+        return;
+      }
+
       const resultHeader = await resHeader.json();
       if (
         !resHeader.ok ||
@@ -620,6 +690,11 @@ export default function OrderKasirPage() {
         },
         body: JSON.stringify(bulkPayload),
       });
+
+      if (resDetail.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       const resultDetail = await resDetail.json();
       if (
@@ -667,6 +742,19 @@ export default function OrderKasirPage() {
       setLoading(false);
     }
   };
+
+  if (!isAuthorized) {
+    return (
+      <Layout>
+        <Head>
+          <title>Order Kasir PO - Naripo</title>
+        </Head>
+        <div className="min-h-screen flex items-center justify-center text-xs text-slate-500">
+          Memeriksa akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

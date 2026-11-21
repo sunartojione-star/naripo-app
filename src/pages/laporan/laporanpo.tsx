@@ -35,6 +35,7 @@ const formatDDMMYYYY = (ymd: string) => {
 
 export default function LaporanPOPage() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [reports, setReports] = useState<any[]>([]);
   const [activeKdCus, setActiveKdCus] = useState<string>("");
   const [activeCustomerName, setActiveCustomerName] = useState<string>("");
@@ -63,8 +64,35 @@ export default function LaporanPOPage() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
 
   useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const savedUserStr = localStorage.getItem("user");
+      if (savedUserStr) {
+        const savedUser = JSON.parse(savedUserStr);
+        const role = String(
+          savedUser?.role || savedUser?.Hak || savedUser?.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Error parse user storage:", e);
+    }
+
+    setAuthChecked(true);
     fetchLaporan();
-  }, []);
+  }, [router]);
 
   // Reset ke halaman 1 setiap kali filter berubah
   useEffect(() => {
@@ -79,8 +107,8 @@ export default function LaporanPOPage() {
       localStorage.getItem("token") || localStorage.getItem("auth_token");
 
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
-      router.push("/login");
+      router.replace("/login");
+      setLoading(false);
       return;
     }
 
@@ -133,6 +161,11 @@ export default function LaporanPOPage() {
           },
         }
       );
+
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       if (!res.ok) {
         throw new Error("Gagal mengambil data laporan PO Note");
@@ -242,19 +275,15 @@ export default function LaporanPOPage() {
     const status = (statusRaw || "PROSES ORDER").trim().toUpperCase();
 
     if (status.includes("ORDER")) {
-      // Merah (seperti EDIT PROSES ORDER [F1])
       return "bg-red-100 text-red-700 border border-red-300";
     }
     if (status.includes("INPUT")) {
-      // Kuning (seperti EDIT PROSES INPUT [F3])
       return "bg-amber-100 text-amber-800 border border-amber-300";
     }
     if (status.includes("PENGAMBILAN")) {
-      // Ungu / Magenta (seperti EDIT PROSES PENGAMBILAN [F5])
       return "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300";
     }
     if (status.includes("KIRIM")) {
-      // Hijau (seperti EDIT PROSES KIRIM [F6])
       return "bg-emerald-100 text-emerald-700 border border-emerald-300";
     }
     return "bg-gray-100 text-gray-700 border border-gray-200";
@@ -439,6 +468,16 @@ export default function LaporanPOPage() {
       setPrintingId(null);
     }
   };
+
+  if (!authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -747,7 +786,7 @@ export default function LaporanPOPage() {
                       setCurrentPage((prev) => Math.max(prev - 1, 1))
                     }
                     disabled={currentPage === 1}
-                    className="p-1.5 sm:p-2 border rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition"
+                    className="p-1.5 sm:p-2 border rounded-lg text-slate-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition"
                     title="Sebelumnya"
                   >
                     <FiChevronLeft className="w-4 h-4" />
@@ -765,7 +804,7 @@ export default function LaporanPOPage() {
                       setCurrentPage((prev) => Math.min(prev + 1, totalPages))
                     }
                     disabled={currentPage === totalPages}
-                    className="p-1.5 sm:p-2 border rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white transition"
+                    className="p-1.5 sm:p-2 border rounded-lg text-slate-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white transition"
                     title="Selanjutnya"
                   >
                     <FiChevronRight className="w-4 h-4" />

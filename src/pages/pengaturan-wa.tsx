@@ -26,8 +26,22 @@ import {
   saveSettingTelp,
 } from "@/utils/waHelper";
 
+function normalizeRole(u: any): string {
+  const raw = String(
+    u?.role || u?.Hak || u?.hak || u?.level_user || u?.level || ""
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "karyawan") return "karyawan";
+  if (raw === "pengurus") return "pengurus";
+  if (raw === "admin" || raw.includes("admin")) return "admin";
+  if (raw === "customer" || raw === "pelanggan") return "customer";
+  return raw || "customer";
+}
+
 export default function PengaturanWAPage() {
   const router = useRouter();
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [contacts, setContacts] = useState<AdminWAContact[]>([]);
   const [settingNama, setSettingNama] = useState("");
   const [settingAlamat, setSettingAlamat] = useState("");
@@ -45,11 +59,24 @@ export default function PengaturanWAPage() {
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
   useEffect(() => {
-    const init = async () => {
+    let active = true;
+
+    const redirectByRole = (role: string) => {
+      if (role === "karyawan") {
+        router.replace("/opname");
+        return true;
+      }
+      if (role !== "admin" && role !== "pengurus") {
+        router.replace("/");
+        return true;
+      }
+      return false;
+    };
+
+    const loadSettings = async (token: string) => {
       const localList = getAdminWAList();
-      const token =
-        localStorage.getItem("token") || localStorage.getItem("auth_token");
       const serverSetting = await fetchSettingData(apiUrl, token);
+      if (!active) return;
 
       if (serverSetting) {
         setSettingNama(serverSetting.Nama);
@@ -87,8 +114,69 @@ export default function PengaturanWAPage() {
       setContacts(localList);
     };
 
+    const init = async () => {
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("auth_token");
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      let hasLocalRole = false;
+      try {
+        const savedUserStr = localStorage.getItem("user");
+        if (savedUserStr) {
+          const u = JSON.parse(savedUserStr);
+          const localRole = normalizeRole(u);
+          hasLocalRole = true;
+          if (redirectByRole(localRole)) return;
+          if (active) setIsAuthorized(true);
+        }
+      } catch {}
+
+      try {
+        const meRes = await fetch(`${apiUrl}/me`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (meRes.status === 401) {
+          router.replace("/login");
+          return;
+        }
+        if (meRes.ok) {
+          const json = await meRes.json();
+          const me = json?.user || json?.data || json;
+          if (me && typeof me === "object") {
+            const serverRole = normalizeRole(me);
+            if (redirectByRole(serverRole)) {
+              if (active) setIsAuthorized(false);
+              return;
+            }
+            if (active) setIsAuthorized(true);
+          }
+        } else if (!hasLocalRole) {
+          router.replace("/");
+          return;
+        }
+      } catch {
+        if (!hasLocalRole) {
+          router.replace("/");
+          return;
+        }
+      }
+
+      if (active) {
+        await loadSettings(token);
+      }
+    };
+
     init();
-  }, [apiUrl]);
+    return () => {
+      active = false;
+    };
+  }, [apiUrl, router]);
 
   const syncToDatabase = async (phone: string) => {
     const token =
@@ -201,6 +289,19 @@ export default function PengaturanWAPage() {
     );
     window.open(url, "_blank", "noopener,noreferrer");
   };
+
+  if (!isAuthorized) {
+    return (
+      <Layout>
+        <Head>
+          <title>Pengaturan WA Admin - Naripo</title>
+        </Head>
+        <div className="min-h-screen flex items-center justify-center text-xs text-slate-500">
+          Memeriksa akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

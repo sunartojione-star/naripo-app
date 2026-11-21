@@ -104,6 +104,7 @@ const formatCompactAxis = (value: number) => {
 
 export default function LaporanLabaRugiPage() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,8 +121,48 @@ export default function LaporanLabaRugiPage() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(40);
 
   useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        const u = JSON.parse(storedUser);
+        const role = String(u.role || u.Hak || u.level_user || "")
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
+        const isAllowed =
+          role === "admin" ||
+          role === "pengurus" ||
+          role === "super admin" ||
+          role === "superadmin" ||
+          role === "kasir" ||
+          Number(u.level_user) === 1 ||
+          u.is_admin === true ||
+          u.is_admin === 1;
+
+        if (!isAllowed) {
+          router.replace("/");
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Gagal membaca data user:", e);
+    }
+
+    setAuthChecked(true);
     fetchLaporan();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -135,8 +176,7 @@ export default function LaporanLabaRugiPage() {
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
-      router.push("/login");
+      router.replace("/login");
       setLoading(false);
       return;
     }
@@ -160,6 +200,11 @@ export default function LaporanLabaRugiPage() {
           },
         }
       );
+
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       const result = await res.json().catch(() => null);
       if (!res.ok || result?.success === false) {
@@ -307,10 +352,20 @@ export default function LaporanLabaRugiPage() {
     },
   };
 
+  if (!authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <Head>
-        <title>Rekap Penjualan & Laba Rugi - Naripo</title>
+        <title>Rekap Penjualan &amp; Laba Rugi - Naripo</title>
       </Head>
 
       <div className="min-h-screen bg-slate-50/70 px-2.5 pt-2.5 pb-20 sm:px-4 sm:py-6">
@@ -324,7 +379,7 @@ export default function LaporanLabaRugiPage() {
                 </div>
                 <div className="min-w-0">
                   <h1 className="text-sm font-extrabold leading-tight sm:text-lg">
-                    Rekap Penjualan & Laba Rugi
+                    Rekap Penjualan &amp; Laba Rugi
                   </h1>
                   <p className="text-[11px] text-blue-100 leading-snug">
                     Rekap harian berdasarkan rentang tanggal
@@ -478,7 +533,7 @@ export default function LaporanLabaRugiPage() {
                 <div className="flex items-center gap-2 mb-3">
                   <FiBarChart2 className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600 shrink-0" />
                   <h2 className="text-xs sm:text-base font-bold text-slate-800">
-                    Grafik Tren Penjualan, Omset Cash, & Keuntungan
+                    Grafik Tren Penjualan, Omset Cash, &amp; Keuntungan
                   </h2>
                 </div>
                 <div className="w-full h-[280px] sm:h-[380px]">

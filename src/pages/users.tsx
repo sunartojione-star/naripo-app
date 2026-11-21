@@ -29,6 +29,8 @@ interface UserItem {
   level_user?: string | null;
 }
 
+const VALID_ROLES = ["customer", "karyawan", "pengurus", "admin"] as const;
+
 export default function DataUsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -43,7 +45,7 @@ export default function DataUsersPage() {
   const [formNama, setFormNama] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formKdCus, setFormKdCus] = useState("");
-  const [formRole, setFormRole] = useState("customer");
+  const [formRole, setFormRole] = useState<string>("customer");
   const [formPassword, setFormPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -59,7 +61,20 @@ export default function DataUsersPage() {
     if (raw === "admin" || raw === "super admin" || raw === "superadmin") {
       return "admin";
     }
+    if (raw === "pengurus") {
+      return "pengurus";
+    }
+    if (raw === "karyawan") {
+      return "karyawan";
+    }
     return "customer";
+  };
+
+  const getRoleBadgeClass = (role: string): string => {
+    if (role === "admin") return "bg-violet-100 text-violet-700";
+    if (role === "pengurus") return "bg-blue-100 text-blue-700";
+    if (role === "karyawan") return "bg-amber-100 text-amber-800";
+    return "bg-slate-100 text-slate-600";
   };
 
   const fetchUsers = async () => {
@@ -116,7 +131,11 @@ export default function DataUsersPage() {
         const role = String(u.role || u.Hak || u.level_user || "")
           .trim()
           .toLowerCase();
-        if (!["admin", "super admin", "superadmin"].includes(role)) {
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+        if (!["admin", "pengurus", "super admin", "superadmin"].includes(role)) {
           router.replace("/");
           return;
         }
@@ -153,7 +172,7 @@ export default function DataUsersPage() {
       const payload: Record<string, any> = {
         name: formNama.trim(),
         email: formEmail.trim(),
-        role: formRole,
+        role: VALID_ROLES.includes(formRole as any) ? formRole : "customer",
       };
 
       const cleanKdCus = formKdCus.trim();
@@ -203,7 +222,7 @@ export default function DataUsersPage() {
                 nama: formNama.trim(),
                 email: formEmail.trim(),
                 kd_cus: cleanKdCus,
-                role: formRole,
+                role: payload.role,
               }
             : item
         )
@@ -252,7 +271,7 @@ export default function DataUsersPage() {
                 Data Users
               </h1>
               <p className="text-[11px] text-slate-500">
-                Kelola customer & admin ({filteredUsers.length} user)
+                Kelola customer, karyawan, pengurus &amp; admin ({filteredUsers.length} user)
               </p>
             </div>
           </div>
@@ -329,7 +348,6 @@ export default function DataUsersPage() {
             <div className="grid grid-cols-1 gap-2 md:hidden">
               {filteredUsers.map((u, idx) => {
                 const roleVal = normalizeRole(u);
-                const isRoleAdmin = roleVal === "admin";
                 return (
                   <div
                     key={u.id}
@@ -344,11 +362,9 @@ export default function DataUsersPage() {
                           {u.name || u.nama || "-"}
                         </span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                            isRoleAdmin
-                              ? "bg-violet-100 text-violet-700"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${getRoleBadgeClass(
+                            roleVal
+                          )}`}
                         >
                           {roleVal}
                         </span>
@@ -396,7 +412,6 @@ export default function DataUsersPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredUsers.map((u, idx) => {
                       const roleVal = normalizeRole(u);
-                      const isRoleAdmin = roleVal === "admin";
                       return (
                         <tr key={u.id} className="hover:bg-violet-50/40">
                           <td className="p-2.5 text-center font-mono text-slate-500">
@@ -413,11 +428,9 @@ export default function DataUsersPage() {
                           </td>
                           <td className="p-2.5 text-center">
                             <span
-                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                isRoleAdmin
-                                  ? "bg-violet-100 text-violet-700"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${getRoleBadgeClass(
+                                roleVal
+                              )}`}
                             >
                               {roleVal}
                             </span>
@@ -516,6 +529,8 @@ export default function DataUsersPage() {
                       className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 bg-white focus:outline-none focus:border-violet-500"
                     >
                       <option value="customer">customer</option>
+                      <option value="karyawan">karyawan</option>
+                      <option value="pengurus">pengurus</option>
                       <option value="admin">admin</option>
                     </select>
                   </div>

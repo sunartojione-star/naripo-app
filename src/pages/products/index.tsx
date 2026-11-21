@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import ProductCard, { Barang } from "@/components/ProductCard";
 import ProductDetailModal from "@/components/ProductDetailModal";
@@ -30,6 +31,19 @@ interface PaginationMeta {
 interface JenisProduk {
   kd: string;
   nama: string;
+}
+
+function normalizeRole(u: any): string {
+  const raw = String(
+    u?.role || u?.Hak || u?.hak || u?.level_user || u?.level || ""
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "karyawan") return "karyawan";
+  if (raw === "pengurus") return "pengurus";
+  if (raw === "admin" || raw.includes("admin")) return "admin";
+  if (raw === "customer" || raw === "pelanggan") return "customer";
+  return raw || "customer";
 }
 
 function seededRandom(seed: number): () => number {
@@ -62,13 +76,16 @@ function createFreshSeed(): number {
 }
 
 export default function ProductsPage() {
+  const router = useRouter();
   const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [products, setProducts] = useState<Barang[]>([]);
   const [jenisProdukList, setJenisProdukList] = useState<JenisProduk[]>([]);
   const [favoriteKdBrs, setFavoriteKdBrs] = useState<Set<string>>(new Set());
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [errorProducts, setErrorProducts] = useState<string>("");
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Barang | null>(null);
 
   // State Pencarian & Filter
@@ -101,12 +118,51 @@ export default function ProductsPage() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2400);
+  };
+
   useEffect(() => {
     setIsMounted(true);
+
+    try {
+      const savedUserStr = localStorage.getItem("user");
+      if (savedUserStr) {
+        const u = JSON.parse(savedUserStr);
+        if (normalizeRole(u) === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+      }
+    } catch {}
+
+    setIsAuthorized(true);
     const newSeed = createFreshSeed();
     setFreshSeed(newSeed);
     setStartPageOffset((newSeed % 35) + 1);
-  }, []);
+
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (token) {
+      fetch(`${apiUrl}/me`, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const json = await res.json();
+          const me = json?.user || json?.data || json;
+          if (me && normalizeRole(me) === "karyawan") {
+            setIsAuthorized(false);
+            router.replace("/opname");
+          }
+        })
+        .catch(() => {});
+    }
+  }, [apiUrl, router]);
 
   // Tutup keyboard HP otomatis saat layar mulai di-scroll & aktifkan bayangan sticky bar
   useEffect(() => {
@@ -159,10 +215,11 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || !isAuthorized) return;
 
     const fetchJenisProduk = async () => {
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("auth_token");
       try {
         const res = await fetch(`${apiUrl}/jenis-produk`, {
           headers: {
@@ -182,7 +239,8 @@ export default function ProductsPage() {
     };
 
     const fetchFavorites = async () => {
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("auth_token");
       if (!token) return;
       try {
         const resFav = await fetch(`${apiUrl}/favorites`, {
@@ -210,7 +268,7 @@ export default function ProductsPage() {
 
     fetchJenisProduk();
     fetchFavorites();
-  }, [isMounted, apiUrl]);
+  }, [isMounted, isAuthorized, apiUrl]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -222,7 +280,7 @@ export default function ProductsPage() {
   }, [searchQuery]);
 
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || !isAuthorized) return;
 
     const fetchData = async () => {
       if (currentPage === 1) {
@@ -231,7 +289,8 @@ export default function ProductsPage() {
         setLoadingMore(true);
       }
       setErrorProducts("");
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("auth_token");
 
       // Saat mencari atau memakai filter Harga/Gudang, mulai dari halaman 1 agar semua data ditemukan
       const isFiltering = Boolean(debouncedSearch || selectedKet || selectedKd);
@@ -341,6 +400,7 @@ export default function ProductsPage() {
     fetchData();
   }, [
     isMounted,
+    isAuthorized,
     currentPage,
     debouncedSearch,
     selectedKet,
@@ -352,7 +412,7 @@ export default function ProductsPage() {
 
   // Infinite Scroll Observer
   useEffect(() => {
-    if (!isMounted || loadingProducts || loadingMore) return;
+    if (!isMounted || !isAuthorized || loadingProducts || loadingMore) return;
     if (currentPage >= pagination.total_pages) return;
 
     const observer = new IntersectionObserver(
@@ -372,6 +432,7 @@ export default function ProductsPage() {
     };
   }, [
     isMounted,
+    isAuthorized,
     loadingProducts,
     loadingMore,
     currentPage,
@@ -389,9 +450,10 @@ export default function ProductsPage() {
   };
 
   const handleToggleFavorite = async (product: Barang) => {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Silakan login terlebih dahulu untuk menambah ke favorit.");
+      showToast("Silakan login terlebih dahulu untuk menambah ke favorit.");
       return;
     }
 
@@ -427,10 +489,11 @@ export default function ProductsPage() {
           return newSet;
         });
       } else {
-        alert(result.message || "Gagal memperbarui favorit.");
+        showToast(result.message || "Gagal memperbarui favorit.");
       }
     } catch (err) {
       console.error("Error toggle favorit:", err);
+      showToast("Gagal memperbarui favorit.");
     }
   };
 
@@ -469,12 +532,18 @@ export default function ProductsPage() {
     setCurrentPage(1);
   };
 
-  if (!isMounted) return null;
+  if (!isMounted || !isAuthorized) return null;
 
   const hasActiveFilter = Boolean(selectedKet || selectedKd || searchQuery);
 
   return (
     <Layout>
+      {toastMsg && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-4 py-2 rounded-full shadow-lg text-xs font-semibold">
+          {toastMsg}
+        </div>
+      )}
+
       <main
         className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 pt-2 pb-16 sm:py-4"
         suppressHydrationWarning

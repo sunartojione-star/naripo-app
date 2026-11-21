@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
@@ -35,6 +37,7 @@ const formatDisplayDate = (isoDate: string) => {
 
 export default function LaporanBSPage() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +54,35 @@ export default function LaporanBSPage() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(10);
 
   useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const savedUserStr = localStorage.getItem("user");
+      if (savedUserStr) {
+        const savedUser = JSON.parse(savedUserStr);
+        const role = String(
+          savedUser.role || savedUser.Hak || savedUser.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Error parse user storage:", e);
+    }
+
+    setAuthChecked(true);
     fetchLaporan();
-  }, []);
+  }, [router]);
 
   // Reset ke halaman 1 setiap kali filter berubah
   useEffect(() => {
@@ -68,8 +98,8 @@ export default function LaporanBSPage() {
     let kdCus = localStorage.getItem("kd_cus");
 
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
-      router.push("/login");
+      router.replace("/login");
+      setLoading(false);
       return;
     }
 
@@ -100,6 +130,11 @@ export default function LaporanBSPage() {
           Accept: "application/json",
         },
       });
+
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       if (!res.ok) {
         throw new Error("Gagal mengambil data laporan BS Cus");
@@ -343,6 +378,16 @@ export default function LaporanBSPage() {
       setPrintingId(null);
     }
   };
+
+  if (!authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

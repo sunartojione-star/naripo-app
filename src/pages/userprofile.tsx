@@ -3,7 +3,7 @@
 import Layout from "@/components/Layout";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import {
   FiUser,
   FiLogOut,
@@ -19,6 +19,7 @@ export default function ProfilePage() {
     name: "",
     email: "",
     kd_cus: "",
+    role: "",
     password: "",
     foto: null as File | null,
     fotoUrl: "",
@@ -46,6 +47,7 @@ export default function ProfilePage() {
           name: parsed.name || "",
           email: parsed.email || "",
           kd_cus: parsed.kd_cus || "",
+          role: String(parsed.role || "").trim().toLowerCase(),
           fotoUrl: parsed.foto || "",
         }));
         setInitialKdCus(parsed.kd_cus || "");
@@ -141,10 +143,19 @@ export default function ProfilePage() {
 
         setMessage("Profil berhasil diperbarui di database!");
         localStorage.setItem("user", JSON.stringify(updatedUser));
+        if (updatedUser.kd_cus) {
+          localStorage.setItem(
+            "kd_cus",
+            String(updatedUser.kd_cus).toUpperCase()
+          );
+        }
         setInitialKdCus(updatedUser.kd_cus || "");
         setUser((prev) => ({
           ...prev,
           ...updatedUser,
+          role: String(updatedUser.role || prev.role || "")
+            .trim()
+            .toLowerCase(),
           password: "",
           foto: null,
           fotoUrl: updatedUser.foto || prev.fotoUrl,
@@ -171,9 +182,31 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    const API_URL = (
+      process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api"
+    ).replace(/\/+$/, "");
+
+    if (token) {
+      try {
+        await fetch(`${API_URL}/logout`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch {
+        // Tetap lanjut hapus sesi lokal jika offline
+      }
+    }
+
     localStorage.removeItem("token");
+    localStorage.removeItem("auth_token");
     localStorage.removeItem("user");
+    localStorage.removeItem("kd_cus");
     router.push("/login");
   };
 
@@ -208,7 +241,7 @@ export default function ProfilePage() {
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto py-6">
+      <div className="max-w-2xl mx-auto py-6 px-3">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">Profil Saya</h1>
 
         {message && (
@@ -237,6 +270,11 @@ export default function ProfilePage() {
                   {user.name || "Pengguna"}
                 </h2>
                 <p className="text-gray-600 text-sm">{user.email || "-"}</p>
+                {user.role && (
+                  <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase bg-slate-100 text-slate-700">
+                    {user.role}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -379,30 +417,44 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Quick Links */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Link
-            href="/laporan/laporanpo"
-            className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
-          >
-            <h3 className="font-bold text-gray-900 mb-2">Laporan Saya</h3>
-            <p className="text-gray-600 text-sm">Lihat riwayat laporan</p>
-          </Link>
-          <Link
-            href="/favorites/produkfavorites"
-            className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
-          >
-            <h3 className="font-bold text-gray-900 mb-2">Favorite</h3>
-            <p className="text-gray-600 text-sm">Produk favorit Anda</p>
-          </Link>
-          <Link
-            href="/cart"
-            className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
-          >
-            <h3 className="font-bold text-gray-900 mb-2">Keranjang</h3>
-            <p className="text-gray-600 text-sm">Cek keranjang belanja</p>
-          </Link>
-        </div>
+        {/* Quick Links sesuai Role */}
+        {user.role === "karyawan" ? (
+          <div className="grid grid-cols-1 gap-4 mb-6">
+            <Link
+              href="/opname"
+              className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
+            >
+              <h3 className="font-bold text-gray-900 mb-2">Stok Opname</h3>
+              <p className="text-gray-600 text-sm">
+                Buka menu input stok opname
+              </p>
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Link
+              href="/laporan/laporanpo"
+              className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
+            >
+              <h3 className="font-bold text-gray-900 mb-2">Laporan Saya</h3>
+              <p className="text-gray-600 text-sm">Lihat riwayat laporan</p>
+            </Link>
+            <Link
+              href="/favorites/produkfavorites"
+              className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
+            >
+              <h3 className="font-bold text-gray-900 mb-2">Favorite</h3>
+              <p className="text-gray-600 text-sm">Produk favorit Anda</p>
+            </Link>
+            <Link
+              href="/cart"
+              className="bg-white p-6 rounded-lg shadow-sm text-center hover:shadow-lg transition border border-gray-100"
+            >
+              <h3 className="font-bold text-gray-900 mb-2">Keranjang</h3>
+              <p className="text-gray-600 text-sm">Cek keranjang belanja</p>
+            </Link>
+          </div>
+        )}
 
         {/* Logout Button */}
         <button

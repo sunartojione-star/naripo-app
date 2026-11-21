@@ -26,6 +26,7 @@ const formatAmount = (value: unknown) => {
 
 export default function HutangSupplierPage() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +36,48 @@ export default function HutangSupplierPage() {
   const [itemsPerPage, setItemsPerPage] = useState<number>(40);
 
   useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        const u = JSON.parse(storedUser);
+        const role = String(u.role || u.Hak || u.level_user || "")
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
+        const isAllowed =
+          role === "admin" ||
+          role === "pengurus" ||
+          role === "super admin" ||
+          role === "superadmin" ||
+          role === "kasir" ||
+          Number(u.level_user) === 1 ||
+          u.is_admin === true ||
+          u.is_admin === 1;
+
+        if (!isAllowed) {
+          router.replace("/");
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Gagal membaca data user:", e);
+    }
+
+    setAuthChecked(true);
     fetchHutangSupplier();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -49,8 +90,7 @@ export default function HutangSupplierPage() {
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Anda belum login. Silakan login terlebih dahulu.");
-      router.push("/login");
+      router.replace("/login");
       setLoading(false);
       return;
     }
@@ -67,6 +107,11 @@ export default function HutangSupplierPage() {
           Accept: "application/json",
         },
       });
+
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       const result = await res.json().catch(() => null);
       if (!res.ok || result?.success === false) {
@@ -116,6 +161,16 @@ export default function HutangSupplierPage() {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredReports.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredReports, currentPage, itemsPerPage]);
+
+  if (!authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

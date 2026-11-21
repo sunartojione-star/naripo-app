@@ -9,12 +9,13 @@ import {
   FiUser,
   FiTrendingDown,
   FiSearch,
+  FiLock,
 } from "react-icons/fi";
 
 export default function SaldoPiutangPage() {
   const router = useRouter();
 
-  const [kdCus, setKdCus] = useState<string>("A135");
+  const [kdCus, setKdCus] = useState<string>("");
   const [loggedInKdCus, setLoggedInKdCus] = useState<string>("");
   const [loggedInName, setLoggedInName] = useState<string>("");
   const [namaPelanggan, setNamaPelanggan] = useState<string>("");
@@ -33,6 +34,17 @@ export default function SaldoPiutangPage() {
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser);
+        const role = String(
+          parsed.role || parsed.Hak || parsed.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
         const autoKd =
           parsed.kd_cus || parsed.username || parsed.kode || parsed.id;
         const autoName =
@@ -43,7 +55,7 @@ export default function SaldoPiutangPage() {
           "";
 
         if (autoKd) {
-          const kdStr = String(autoKd).toUpperCase();
+          const kdStr = String(autoKd).trim().toUpperCase();
           setKdCus(kdStr);
           setLoggedInKdCus(kdStr);
         }
@@ -56,7 +68,7 @@ export default function SaldoPiutangPage() {
         console.error("Gagal membaca data user login", e);
       }
     }
-  }, []);
+  }, [router]);
 
   const handleCekSaldo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,32 +76,41 @@ export default function SaldoPiutangPage() {
     setError("");
     setSaldoPiutang(null);
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
       setError("Silakan login terlebih dahulu.");
       setLoading(false);
       return;
     }
 
+    const activeKdCus = (loggedInKdCus || kdCus).trim().toUpperCase();
+    if (!activeKdCus) {
+      setError("Kode customer tidak ditemukan pada akun login.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Mengirimkan parameter kd_cus ke endpoint piutang/saldo
       const queryParams = new URLSearchParams({
-        kd_cus: kdCus,
+        kd_cus: activeKdCus,
       });
 
-      const response = await fetch(`${apiUrl}/piutang/saldo?${queryParams.toString()}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(
+        `${apiUrl}/piutang/saldo?${queryParams.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       const result = await response.json();
 
       if (response.ok && result.success) {
-        // Mengambil nilai dari key saldo_piutang_terakhir sesuai respons dari backend API
         const nilaiSaldo =
           result.data?.saldo_piutang_terakhir ??
           result.data?.saldo ??
@@ -106,10 +127,8 @@ export default function SaldoPiutangPage() {
           "";
         if (apiNama) {
           setNamaPelanggan(String(apiNama).trim());
-        } else if (kdCus === loggedInKdCus && loggedInName) {
+        } else if (loggedInName) {
           setNamaPelanggan(loggedInName);
-        } else {
-          setNamaPelanggan("");
         }
       } else {
         setError(result.message || "Gagal mengambil data saldo piutang.");
@@ -154,7 +173,7 @@ export default function SaldoPiutangPage() {
               </button>
             </div>
 
-            {/* Form Input */}
+            {/* Form Info Customer & Tombol Cek */}
             <form onSubmit={handleCekSaldo} className="p-3.5 sm:p-5 space-y-3">
               {/* Nama Pelanggan */}
               {namaPelanggan && (
@@ -166,7 +185,7 @@ export default function SaldoPiutangPage() {
                 </div>
               )}
 
-              {/* Kode Customer */}
+              {/* Kode Customer (Tetap Tampil & Terkunci) */}
               <div>
                 <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1">
                   Kode Customer
@@ -177,27 +196,22 @@ export default function SaldoPiutangPage() {
                   </div>
                   <input
                     type="text"
-                    value={kdCus}
-                    onChange={(e) => {
-                      const val = e.target.value.toUpperCase();
-                      setKdCus(val);
-                      if (val === loggedInKdCus && loggedInName) {
-                        setNamaPelanggan(loggedInName);
-                      } else {
-                        setNamaPelanggan("");
-                      }
-                    }}
-                    required
-                    className="w-full uppercase rounded-xl border border-slate-300 bg-slate-50 focus:bg-white pl-8 pr-3 py-2 text-xs sm:text-sm text-slate-800 font-bold tracking-wide focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 transition"
-                    placeholder="Contoh: A135"
+                    value={kdCus || "-"}
+                    readOnly
+                    tabIndex={-1}
+                    aria-readonly="true"
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-100 pl-8 pr-9 py-2 text-xs sm:text-sm text-slate-700 font-bold tracking-wide cursor-not-allowed select-none focus:outline-none"
                   />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
+                    <FiLock className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               </div>
 
               {/* Tombol Submit */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !kdCus}
                 className="w-full bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white font-bold py-2.5 px-4 rounded-xl transition duration-150 disabled:bg-slate-400 shadow-md shadow-orange-600/20 text-xs sm:text-sm flex items-center justify-center gap-2"
               >
                 <FiSearch className="w-4 h-4" />

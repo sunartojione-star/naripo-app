@@ -41,11 +41,11 @@ export default function Home() {
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
   const apiUrl = rawApiUrl.replace(/\/$/, "");
 
+  const normalizedRole = userRole.trim().toLowerCase();
+  const isKaryawan = normalizedRole === "karyawan";
   const isAdmin =
     isAdminFlag ||
-    ["admin", "super admin", "superadmin"].includes(
-      userRole.trim().toLowerCase()
-    );
+    ["admin", "pengurus", "super admin", "superadmin"].includes(normalizedRole);
 
   useEffect(() => {
     setIsMounted(true);
@@ -53,11 +53,19 @@ export default function Home() {
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
-        setUserRole(
-          String(
-            parsedUser.role || parsedUser.Hak || parsedUser.level_user || ""
-          )
-        );
+        const role = String(
+          parsedUser.role || parsedUser.Hak || parsedUser.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          setUserRole("karyawan");
+          router.replace("/opname");
+          return;
+        }
+
+        setUserRole(role);
         setIsAdminFlag(
           parsedUser.is_admin === true ||
             parsedUser.is_admin === 1 ||
@@ -67,16 +75,17 @@ export default function Home() {
         console.error("Gagal parsing data user", e);
       }
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || isKaryawan) return;
 
     const fetchData = async () => {
       setLoadingProducts(true);
       setErrorProducts("");
       setNeedsLogin(false);
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("token") || localStorage.getItem("auth_token");
 
       if (!token) {
         setNeedsLogin(true);
@@ -147,10 +156,11 @@ export default function Home() {
     };
 
     fetchData();
-  }, [isMounted, apiUrl]);
+  }, [isMounted, isKaryawan, apiUrl]);
 
   const handleToggleFavorite = async (product: Barang) => {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
       alert("Silakan login terlebih dahulu untuk menambah ke favorit.");
       return;
@@ -221,12 +231,12 @@ export default function Home() {
   const handleStokOpname = () => {
     if (!localStorage.getItem("token")) return alert("Silakan login terlebih dahulu.");
     if (!isAdmin) {
-      return alert("Akses ditolak. Menu Stok Opname hanya khusus untuk Admin.");
+      return alert("Akses ditolak. Menu Stok Opname hanya khusus untuk Admin & Pengurus.");
     }
     router.push("/opname/halamanopname");
   };
 
-  if (!isMounted) return null;
+  if (!isMounted || isKaryawan) return null;
 
   return (
     <Layout>
@@ -294,11 +304,11 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* MENU KHUSUS ADMIN */}
+              {/* MENU KHUSUS ADMIN & PENGURUS */}
               {isAdmin && (
                 <div className="w-full mt-2.5 sm:mt-3.5 pt-2.5 sm:pt-3.5 border-t border-white/20">
                   <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-100 mb-1.5 sm:mb-2 text-center sm:text-left">
-                    Menu Khusus Admin
+                    Menu Khusus Admin &amp; Pengurus
                   </p>
                   <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2.5">
                     <button

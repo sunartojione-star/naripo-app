@@ -44,6 +44,7 @@ function extractKdTranBS(res: any): string | number | null {
 
 export default function KeranjangBSPage() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
   const [keterangan, setKeterangan] = useState("");
   const [loading, setLoading] = useState(false);
   const [adminWA, setAdminWA] = useState("");
@@ -87,7 +88,6 @@ export default function KeranjangBSPage() {
   useEffect(() => {
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
-    fetchAdminWA(apiUrl, token).then(setAdminWA);
 
     try {
       const savedUserStr = localStorage.getItem("user");
@@ -98,6 +98,17 @@ export default function KeranjangBSPage() {
 
       if (savedUserStr) {
         const savedUser = JSON.parse(savedUserStr);
+        const roleRaw = String(
+          savedUser?.role || savedUser?.Hak || savedUser?.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (roleRaw === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
         setCustomerInfo({
           nama: savedUser?.name || savedUser?.nama || "CUSTOMER",
           alamat: savedUser?.alamat || "JL. Cemara 34",
@@ -113,7 +124,10 @@ export default function KeranjangBSPage() {
     } catch (err) {
       console.error("Gagal parse user data:", err);
     }
-  }, [apiUrl]);
+
+    setAuthChecked(true);
+    fetchAdminWA(apiUrl, token).then(setAdminWA);
+  }, [apiUrl, router]);
 
   const parsePrice = (price: any): number => {
     if (typeof price === "number") return price;
@@ -284,6 +298,16 @@ export default function KeranjangBSPage() {
       setLoading(false);
     }
   };
+
+  if (!authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

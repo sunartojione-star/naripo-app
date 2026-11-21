@@ -1,4 +1,7 @@
+"use client";
+
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
 import {
   FiPlus,
@@ -38,6 +41,8 @@ interface DetailItem {
   sub_total: number;
 }
 
+const QUICK_PAGE_STEP = 5;
+
 const getBarangHppTerakhir = (barang: Barang): number => {
   const raw =
     barang.hpp_terakhir ??
@@ -51,6 +56,8 @@ const getBarangHppTerakhir = (barang: Barang): number => {
 };
 
 export default function HalamanOpname() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -77,12 +84,14 @@ export default function HalamanOpname() {
   const quickInputRef = useRef<HTMLInputElement>(null);
   const mobileQtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const desktopQtyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const quickOptionRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Input Cepat / Barcode Scanner di Atas Keranjang State
   const [quickKeyword, setQuickKeyword] = useState<string>("");
   const [quickResults, setQuickResults] = useState<Barang[]>([]);
   const [quickSearching, setQuickSearching] = useState<boolean>(false);
   const [showQuickDropdown, setShowQuickDropdown] = useState<boolean>(false);
+  const [quickHighlight, setQuickHighlight] = useState<number>(0);
 
   // Kamera Barcode Scanner State (Khusus HP)
   const [showCameraModal, setShowCameraModal] = useState<boolean>(false);
@@ -122,10 +131,50 @@ export default function HalamanOpname() {
     }
   };
 
-  // Navigasi Keyboard Page Up & Page Down untuk Laptop
+  // Cek hak akses: hanya admin, pengurus, dan karyawan
+  useEffect(() => {
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        const u = JSON.parse(storedUser);
+        const role = String(u.role || u.Hak || u.level_user || "")
+          .trim()
+          .toLowerCase();
+
+        const isAllowed =
+          role === "admin" ||
+          role === "pengurus" ||
+          role === "karyawan" ||
+          role === "super admin" ||
+          role === "superadmin" ||
+          role === "kasir" ||
+          Number(u.level_user) === 1 ||
+          u.is_admin === true ||
+          u.is_admin === 1;
+
+        if (!isAllowed) {
+          router.replace("/");
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Gagal membaca data user:", e);
+    }
+
+    setAuthChecked(true);
+  }, [router]);
+
+  // Navigasi Keyboard Page Up & Page Down untuk tabel jika dropdown pencarian tidak sedang terbuka
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showActionModal || showCameraModal) return;
+      if (showActionModal || showCameraModal || showQuickDropdown) return;
 
       if (e.key === "PageDown") {
         e.preventDefault();
@@ -138,7 +187,20 @@ export default function HalamanOpname() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showActionModal, showCameraModal]);
+  }, [showActionModal, showCameraModal, showQuickDropdown]);
+
+  // Reset & auto-scroll highlight dropdown pencarian barang
+  useEffect(() => {
+    setQuickHighlight(0);
+  }, [quickResults]);
+
+  useEffect(() => {
+    if (!showQuickDropdown) return;
+    const el = quickOptionRefs.current[quickHighlight];
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [quickHighlight, showQuickDropdown]);
 
   // Bersihkan stream kamera jika komponen di-unmount
   useEffect(() => {
@@ -211,7 +273,8 @@ export default function HalamanOpname() {
       return false;
     }
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) return false;
 
     setCheckingNoBuku(true);
@@ -351,7 +414,8 @@ export default function HalamanOpname() {
       return;
     }
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     try {
       const res = await fetch(
         `${apiUrl}/barangs?search=${encodeURIComponent(trimmed)}&limit=10`,
@@ -384,10 +448,52 @@ export default function HalamanOpname() {
     }
   };
 
-  // Handler ENTER untuk Alat Barcode Scanner Fisik
+  // Handler Keyboard (Panah, PgUp/PgDn, Home/End, Enter, Esc) pada Input Pencarian Cepat
   const handleQuickSearchKeyDown = async (
     e: React.KeyboardEvent<HTMLInputElement>
   ) => {
+    const total = quickResults.length;
+
+    if (showQuickDropdown && total > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setQuickHighlight((prev) => Math.min(total - 1, prev + 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setQuickHighlight((prev) => Math.max(0, prev - 1));
+        return;
+      }
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        setQuickHighlight((prev) =>
+          Math.min(total - 1, prev + QUICK_PAGE_STEP)
+        );
+        return;
+      }
+      if (e.key === "PageUp") {
+        e.preventDefault();
+        setQuickHighlight((prev) => Math.max(0, prev - QUICK_PAGE_STEP));
+        return;
+      }
+      if (e.key === "Home") {
+        e.preventDefault();
+        setQuickHighlight(0);
+        return;
+      }
+      if (e.key === "End") {
+        e.preventDefault();
+        setQuickHighlight(total - 1);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowQuickDropdown(false);
+        return;
+      }
+    }
+
     if (e.key === "Enter") {
       e.preventDefault();
       const kw = quickKeyword.trim();
@@ -404,8 +510,14 @@ export default function HalamanOpname() {
         return;
       }
 
+      if (showQuickDropdown && quickResults[quickHighlight]) {
+        addItemToKeranjang(quickResults[quickHighlight]);
+        return;
+      }
+
       try {
-        const token = localStorage.getItem("token");
+        const token =
+          localStorage.getItem("token") || localStorage.getItem("auth_token");
         const res = await fetch(
           `${apiUrl}/barangs?search=${encodeURIComponent(kw)}&limit=5`,
           {
@@ -574,7 +686,8 @@ export default function HalamanOpname() {
   };
 
   const handleSimpan = async () => {
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
       alert("Silakan login terlebih dahulu.");
       return;
@@ -662,7 +775,15 @@ export default function HalamanOpname() {
     }
   };
 
-  if (!isMounted) return null;
+  if (!isMounted || !authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-400">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
 
   const currentSelectedItem =
     selectedItemIndex !== null ? items[selectedItemIndex] : null;
@@ -690,7 +811,7 @@ export default function HalamanOpname() {
 
       {/* TAMPILAN LAYAR NORMAL */}
       <div className="no-print max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 lg:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
-        {/* Header Title (Ikut tergulung ke atas saat di-scroll) */}
+        {/* Header Title */}
         <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
@@ -715,7 +836,7 @@ export default function HalamanOpname() {
           </div>
         </div>
 
-        {/* STICKY WRAPPER: FORM HEADER + SCAN BARCODE (Menutup Title saat Scroll) */}
+        {/* STICKY WRAPPER: FORM HEADER + SCAN BARCODE */}
         <div className="sticky top-14 sm:top-16 z-30 bg-slate-900 pt-1 pb-2 -mx-1.5 px-1.5 sm:-mx-4 sm:px-4 shadow-lg">
           {/* Form Header */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 sm:gap-5 bg-slate-800 p-2.5 sm:p-4 rounded-xl border border-slate-700 mb-2 sm:mb-3 shadow-md">
@@ -824,7 +945,7 @@ export default function HalamanOpname() {
                   value={quickKeyword}
                   onChange={(e) => handleQuickSearchChange(e.target.value)}
                   onKeyDown={handleQuickSearchKeyDown}
-                  placeholder="Scan Barcode"
+                  placeholder="Scan Barcode / Ketik Nama Barang (↑↓ / PgUp PgDn)"
                   className="w-full bg-slate-950 border-2 border-blue-500/80 rounded-lg pl-8 sm:pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
                 />
                 {quickKeyword && (
@@ -864,42 +985,53 @@ export default function HalamanOpname() {
                     Barang tidak ditemukan.
                   </div>
                 ) : (
-                  quickResults.map((b) => (
-                    <div
-                      key={b.kd_br}
-                      onClick={() => addItemToKeranjang(b)}
-                      className="p-2 bg-slate-900/90 hover:bg-blue-900/40 border border-slate-700 hover:border-blue-500 rounded-lg cursor-pointer flex justify-between items-center transition"
-                    >
-                      <div>
-                        <div className="font-mono text-blue-400 text-[11px] flex items-center gap-1.5">
-                          <span className="font-bold">{b.kd_br}</span>
-                          {b.barcode && (
-                            <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
-                              Barcode: {b.barcode}
-                            </span>
-                          )}
+                  quickResults.map((b, idx) => {
+                    const isHighlighted = idx === quickHighlight;
+                    return (
+                      <div
+                        key={b.kd_br}
+                        ref={(el) => {
+                          quickOptionRefs.current[idx] = el;
+                        }}
+                        onMouseEnter={() => setQuickHighlight(idx)}
+                        onClick={() => addItemToKeranjang(b)}
+                        className={`p-2 rounded-lg cursor-pointer flex justify-between items-center transition border ${
+                          isHighlighted
+                            ? "bg-blue-700/70 border-blue-400 ring-1 ring-blue-400"
+                            : "bg-slate-900/90 hover:bg-blue-900/40 border-slate-700 hover:border-blue-500"
+                        }`}
+                      >
+                        <div>
+                          <div className="font-mono text-blue-300 text-[11px] flex items-center gap-1.5">
+                            <span className="font-bold">{b.kd_br}</span>
+                            {b.barcode && (
+                              <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
+                                Barcode: {b.barcode}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-white font-medium text-xs line-clamp-1">
+                            {b.nama}
+                          </div>
                         </div>
-                        <div className="text-white font-medium text-xs line-clamp-1">
-                          {b.nama}
+                        <div className="text-right shrink-0 ml-2">
+                          <div className="text-[9px] text-slate-300">
+                            Sat: {b.satuan}
+                          </div>
+                          <div className="text-cyan-300 font-mono text-[11px] font-bold">
+                            {formatAngka(getBarangHppTerakhir(b))}
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right shrink-0 ml-2">
-                        <div className="text-[9px] text-slate-400">
-                          Sat: {b.satuan}
-                        </div>
-                        <div className="text-cyan-400 font-mono text-[11px] font-bold">
-                          {formatAngka(getBarangHppTerakhir(b))}
-                        </div>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Info Jumlah Barang Dihitung (HP, Tablet, & PC) */}
+        {/* Info Jumlah Barang Dihitung */}
         <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-300 px-1 mb-2">
           <span>Daftar Barang Dihitung</span>
           <span className="font-bold text-blue-400">
@@ -907,7 +1039,7 @@ export default function HalamanOpname() {
           </span>
         </div>
 
-        {/* TAMPILAN HP: Daftar Kartu Opname Pas Layar HP */}
+        {/* TAMPILAN HP: Daftar Kartu Opname */}
         <div className="md:hidden space-y-2 mb-4">
           {items.length === 0 ? (
             <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 text-center text-xs text-slate-400">
@@ -1030,7 +1162,7 @@ export default function HalamanOpname() {
           )}
         </div>
 
-        {/* TAMPILAN TABLET & PC: Tabel Grid Detail Opname (Hanya Muncul Barang yang Diinput) */}
+        {/* TAMPILAN TABLET & PC: Tabel Grid Detail Opname */}
         <div
           ref={tableContainerRef}
           tabIndex={0}

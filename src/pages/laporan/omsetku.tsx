@@ -10,6 +10,7 @@ import {
   FiUser,
   FiTrendingUp,
   FiSearch,
+  FiLock,
 } from "react-icons/fi";
 
 const formatLocalYMD = (date: Date) => {
@@ -40,7 +41,7 @@ const formatDisplayDate = (ymd: string) => {
 export default function OmsetKuPage() {
   const router = useRouter();
 
-  const [kdCus, setKdCus] = useState<string>("A135");
+  const [kdCus, setKdCus] = useState<string>("");
   const [loggedInKdCus, setLoggedInKdCus] = useState<string>("");
   const [loggedInName, setLoggedInName] = useState<string>("");
   const [namaPelanggan, setNamaPelanggan] = useState<string>("");
@@ -68,6 +69,17 @@ export default function OmsetKuPage() {
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser);
+        const role = String(
+          parsed.role || parsed.Hak || parsed.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        if (role === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
         const autoKd =
           parsed.kd_cus || parsed.username || parsed.kode || parsed.id;
         const autoName =
@@ -78,7 +90,7 @@ export default function OmsetKuPage() {
           "";
 
         if (autoKd) {
-          const kdStr = String(autoKd).toUpperCase();
+          const kdStr = String(autoKd).trim().toUpperCase();
           setKdCus(kdStr);
           setLoggedInKdCus(kdStr);
         }
@@ -91,7 +103,7 @@ export default function OmsetKuPage() {
         console.error("Gagal membaca data user login", e);
       }
     }
-  }, []);
+  }, [router]);
 
   const applyPreset = (preset: "bulan_ini" | "bulan_lalu") => {
     const now = new Date();
@@ -114,9 +126,17 @@ export default function OmsetKuPage() {
     setError("");
     setOmsetBruto(null);
 
-    const token = localStorage.getItem("token");
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      setError("Silakan login terlebih dahulu.");
+      router.replace("/login");
+      setLoading(false);
+      return;
+    }
+
+    const activeKdCus = (loggedInKdCus || kdCus).trim().toUpperCase();
+    if (!activeKdCus) {
+      setError("Kode customer tidak ditemukan pada akun login.");
       setLoading(false);
       return;
     }
@@ -130,11 +150,16 @@ export default function OmsetKuPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          kd_cus: kdCus,
+          kd_cus: activeKdCus,
           tgl_mulai: tglMulai,
           tgl_selesai: tglSelesai,
         }),
       });
+
+      if (response.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       const result = await response.json();
 
@@ -148,10 +173,8 @@ export default function OmsetKuPage() {
           "";
         if (apiNama) {
           setNamaPelanggan(String(apiNama).trim());
-        } else if (kdCus === loggedInKdCus && loggedInName) {
+        } else if (loggedInName) {
           setNamaPelanggan(loggedInName);
-        } else {
-          setNamaPelanggan("");
         }
       } else {
         setError(result.message || "Gagal mengambil data omset.");
@@ -208,7 +231,7 @@ export default function OmsetKuPage() {
                 </div>
               )}
 
-              {/* Kode Customer + 2 Tombol Cepat */}
+              {/* Kode Customer (Terkunci / Read-Only) + 2 Tombol Cepat */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
                 <div>
                   <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1">
@@ -220,20 +243,15 @@ export default function OmsetKuPage() {
                     </div>
                     <input
                       type="text"
-                      value={kdCus}
-                      onChange={(e) => {
-                        const val = e.target.value.toUpperCase();
-                        setKdCus(val);
-                        if (val === loggedInKdCus && loggedInName) {
-                          setNamaPelanggan(loggedInName);
-                        } else {
-                          setNamaPelanggan("");
-                        }
-                      }}
-                      required
-                      className="w-full uppercase rounded-xl border border-slate-300 bg-slate-50 focus:bg-white pl-8 pr-3 py-2 text-xs sm:text-sm text-slate-800 font-bold tracking-wide focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
-                      placeholder="Contoh: A135"
+                      value={kdCus || "-"}
+                      readOnly
+                      tabIndex={-1}
+                      aria-readonly="true"
+                      className="w-full uppercase rounded-xl border border-slate-200 bg-slate-100 pl-8 pr-9 py-2 text-xs sm:text-sm text-slate-700 font-bold tracking-wide cursor-not-allowed select-none focus:outline-none"
                     />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
+                      <FiLock className="w-3.5 h-3.5" />
+                    </div>
                   </div>
                 </div>
 
@@ -310,7 +328,7 @@ export default function OmsetKuPage() {
               {/* Tombol Submit */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !kdCus}
                 className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold py-2.5 px-4 rounded-xl transition duration-150 disabled:bg-slate-400 shadow-md shadow-blue-600/20 text-xs sm:text-sm flex items-center justify-center gap-2"
               >
                 <FiSearch className="w-4 h-4" />

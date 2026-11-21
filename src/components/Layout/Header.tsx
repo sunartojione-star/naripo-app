@@ -1,4 +1,3 @@
-// src/components/Layout/Header.tsx
 "use client";
 
 import Link from "next/link";
@@ -23,6 +22,7 @@ import {
   FiTrendingUp,
   FiTruck,
   FiPackage,
+  FiClipboard,
 } from "react-icons/fi";
 import { useCartStoreBS } from "@/store/cartStoreBS";
 import { useCartStore } from "@/store/cartStore";
@@ -82,6 +82,7 @@ export default function Header() {
   const [userName, setUserName] = useState<string>("");
   const [userFoto, setUserFoto] = useState<string>("");
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isKaryawan, setIsKaryawan] = useState<boolean>(false);
   const [branchBrand, setBranchBrand] = useState<BranchBrand>(() =>
     detectBranchBrand()
   );
@@ -125,8 +126,10 @@ export default function Header() {
         )
           .trim()
           .toLowerCase();
+
         const checkIsAdmin =
           role === "admin" ||
+          role === "pengurus" ||
           role === "super admin" ||
           role === "superadmin" ||
           role === "kasir" ||
@@ -134,7 +137,21 @@ export default function Header() {
           userObj.is_admin === true ||
           userObj.is_admin === 1;
 
+        const checkIsKaryawan = role === "karyawan";
+
         setIsAdmin(checkIsAdmin);
+        setIsKaryawan(checkIsKaryawan);
+
+        // Proteksi route khusus karyawan: hanya boleh akses /opname, /userprofile, atau /login
+        if (
+          checkIsKaryawan &&
+          pathname &&
+          !pathname.startsWith("/opname") &&
+          !pathname.startsWith("/userprofile") &&
+          !pathname.startsWith("/login")
+        ) {
+          router.replace("/opname");
+        }
       } catch (e) {
         console.error("Gagal parsing data user", e);
       }
@@ -142,8 +159,9 @@ export default function Header() {
       setUserName("");
       setUserFoto("");
       setIsAdmin(false);
+      setIsKaryawan(false);
     }
-  }, [pathname]);
+  }, [pathname, router]);
 
   // Tutup popup akun & menu atas jika klik di luar
   useEffect(() => {
@@ -199,57 +217,70 @@ export default function Header() {
       console.error("Gagal melakukan logout server:", error);
     } finally {
       localStorage.removeItem("token");
+      localStorage.removeItem("auth_token");
       localStorage.removeItem("user");
+      localStorage.removeItem("kd_cus");
       setIsAdmin(false);
+      setIsKaryawan(false);
       setIsProfileOpen(false);
       router.push("/login");
     }
   };
 
-  const navItems = [
-    {
-      label: "Home",
-      fullLabel: "Beranda",
-      href: "/",
-      icon: FiHome,
-      active: pathname === "/",
-    },
-    {
-      label: "Produk",
-      fullLabel: "Katalog Produk",
-      href: "/products",
-      icon: FiShoppingBag,
-      active: pathname.startsWith("/products"),
-    },
-    {
-      label: "Input BS",
-      fullLabel: "Input BS",
-      href: "/BS/halamanBS",
-      icon: FiBox,
-      active: pathname.startsWith("/BS"),
-    },
-    {
-      label: "Omset",
-      fullLabel: "Cek Omset",
-      href: "/laporan/omsetku",
-      icon: FiDollarSign,
-      active: pathname.startsWith("/laporan/omsetku"),
-    },
-    {
-      label: "Cek Piutang",
-      fullLabel: "Cek Piutang",
-      href: "/laporan/hutangku",
-      icon: FiDollarSign,
-      active: pathname.startsWith("/laporan/hutangku"),
-    },
-    {
-      label: "Order",
-      fullLabel: "Cek Orderanku",
-      href: "/laporan/laporanpo",
-      icon: FiFileText,
-      active: pathname.startsWith("/laporan/laporanpo"),
-    },
-  ];
+  const navItems = isKaryawan
+    ? [
+        {
+          label: "Opname",
+          fullLabel: "Stok Opname",
+          href: "/opname",
+          icon: FiClipboard,
+          active: pathname.startsWith("/opname"),
+        },
+      ]
+    : [
+        {
+          label: "Home",
+          fullLabel: "Beranda",
+          href: "/",
+          icon: FiHome,
+          active: pathname === "/",
+        },
+        {
+          label: "Produk",
+          fullLabel: "Katalog Produk",
+          href: "/products",
+          icon: FiShoppingBag,
+          active: pathname.startsWith("/products"),
+        },
+        {
+          label: "Input BS",
+          fullLabel: "Input BS",
+          href: "/BS/halamanBS",
+          icon: FiBox,
+          active: pathname.startsWith("/BS"),
+        },
+        {
+          label: "Omset",
+          fullLabel: "Cek Omset",
+          href: "/laporan/omsetku",
+          icon: FiDollarSign,
+          active: pathname.startsWith("/laporan/omsetku"),
+        },
+        {
+          label: "Cek Piutang",
+          fullLabel: "Cek Piutang",
+          href: "/laporan/hutangku",
+          icon: FiDollarSign,
+          active: pathname.startsWith("/laporan/hutangku"),
+        },
+        {
+          label: "Order",
+          fullLabel: "Cek Orderanku",
+          href: "/laporan/laporanpo",
+          icon: FiFileText,
+          active: pathname.startsWith("/laporan/laporanpo"),
+        },
+      ];
 
   const isAccountActive =
     isProfileOpen || pathname.startsWith("/userprofile");
@@ -297,9 +328,22 @@ export default function Header() {
           <FiChevronRight className="w-3.5 h-3.5 text-slate-400" />
         </Link>
 
-        {/* Menu tambahan khusus Admin HANYA MUNCUL JIKA ISADMIN BERNILAI TRUE */}
+        {/* Menu tambahan khusus Admin & Pengurus */}
         {isAdmin && (
           <div className="border-t border-slate-100 my-1 pt-1">
+            <Link
+              href="/opname"
+              onClick={() => setIsProfileOpen(false)}
+              className="flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="w-7 h-7 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                  <FiClipboard className="w-3.5 h-3.5" />
+                </span>
+                <span>Stok Opname</span>
+              </div>
+            </Link>
+
             <Link
               href="/detail-barang"
               onClick={() => setIsProfileOpen(false)}
@@ -410,7 +454,7 @@ export default function Header() {
             {/* SISI KIRI: LOGO + NAMA KOPERASI + CABANG + MENU PC */}
             <div className="flex items-center min-w-0 flex-1 gap-3 xl:gap-5">
               <Link
-                href="/"
+                href={isKaryawan ? "/opname" : "/"}
                 className="flex items-center gap-2 min-w-0 shrink-0"
               >
                 <img
@@ -458,31 +502,35 @@ export default function Header() {
 
             {/* SISI KANAN: KERANJANG, AKUN (PC), & HAMBURGER (HP & TABLET) */}
             <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-              <Link
-                href="/cart"
-                className="relative p-1.5 text-gray-700 hover:text-blue-600 transition-colors"
-                title="Keranjang Belanja"
-              >
-                <FiShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
-                {totalRegularItems > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center ring-2 ring-white">
-                    {totalRegularItems > 99 ? "99+" : totalRegularItems}
-                  </span>
-                )}
-              </Link>
+              {!isKaryawan && (
+                <>
+                  <Link
+                    href="/cart"
+                    className="relative p-1.5 text-gray-700 hover:text-blue-600 transition-colors"
+                    title="Keranjang Belanja"
+                  >
+                    <FiShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+                    {totalRegularItems > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center ring-2 ring-white">
+                        {totalRegularItems > 99 ? "99+" : totalRegularItems}
+                      </span>
+                    )}
+                  </Link>
 
-              <Link
-                href="/keranjangbs"
-                className="relative p-1.5 text-gray-700 hover:text-amber-600 transition-colors"
-                title="Keranjang BS"
-              >
-                <FiBox className="w-5 h-5 sm:w-6 sm:h-6" />
-                {totalBsItems > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center ring-2 ring-white">
-                    {totalBsItems > 99 ? "99+" : totalBsItems}
-                  </span>
-                )}
-              </Link>
+                  <Link
+                    href="/keranjangbs"
+                    className="relative p-1.5 text-gray-700 hover:text-amber-600 transition-colors"
+                    title="Keranjang BS"
+                  >
+                    <FiBox className="w-5 h-5 sm:w-6 sm:h-6" />
+                    {totalBsItems > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center ring-2 ring-white">
+                        {totalBsItems > 99 ? "99+" : totalBsItems}
+                      </span>
+                    )}
+                  </Link>
+                </>
+              )}
 
               {/* TOMBOL AKUN KHUSUS PC (>= 1024px) */}
               <div className="hidden lg:block relative" ref={desktopProfileRef}>

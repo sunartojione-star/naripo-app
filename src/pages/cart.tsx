@@ -78,6 +78,7 @@ function extractKdTran(res: any): string | number | null {
 
 export default function CartPage() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [adminWA, setAdminWA] = useState("");
@@ -124,7 +125,6 @@ export default function CartPage() {
     setDeliveryDate(getLocalDateYYYYMMDD());
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
-    fetchAdminWA(apiUrl, token).then(setAdminWA);
 
     try {
       const savedUserStr = localStorage.getItem("user");
@@ -140,8 +140,15 @@ export default function CartPage() {
         )
           .trim()
           .toLowerCase();
+
+        if (roleRaw === "karyawan") {
+          router.replace("/opname");
+          return;
+        }
+
         const isStaffAdmin =
           roleRaw === "admin" ||
+          roleRaw === "pengurus" ||
           roleRaw === "super admin" ||
           roleRaw === "superadmin" ||
           roleRaw === "kasir";
@@ -163,7 +170,10 @@ export default function CartPage() {
     } catch (err) {
       console.error("Gagal parse user data:", err);
     }
-  }, [apiUrl]);
+
+    setAuthChecked(true);
+    fetchAdminWA(apiUrl, token).then(setAdminWA);
+  }, [apiUrl, router]);
 
   useEffect(() => {
     setRasaMap((prev) => {
@@ -393,7 +403,6 @@ export default function CartPage() {
         "*Segera Proses*",
       ].join("\n");
 
-      // Selalu utamakan nomor terbaru dari database cabang (/api/setting)
       const targetWA =
         (await fetchAdminWA(apiUrl, token)) || adminWA || getLocalAdminWA();
       const waUrl = buildWhatsAppUrl(targetWA, waMessage);
@@ -414,6 +423,16 @@ export default function CartPage() {
       setLoading(false);
     }
   };
+
+  if (!authChecked) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
+          Memeriksa hak akses...
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
