@@ -174,20 +174,6 @@ export default function OrderKasirPage() {
     };
   }, [apiUrl]);
 
-  // Tutup keyboard HP otomatis saat layar mulai di-scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      if (
-        window.scrollY > 20 &&
-        document.activeElement === searchInputRef.current
-      ) {
-        searchInputRef.current?.blur();
-      }
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
   // Simpan otomatis ke localStorage setiap kali daftar barang / catatan berubah
   useEffect(() => {
     if (!hasLoadedDraft.current) return;
@@ -252,6 +238,16 @@ export default function OrderKasirPage() {
     return 0;
   };
 
+  const focusSearchBox = () => {
+    setTimeout(() => {
+      const searchEl = searchInputRef.current;
+      if (searchEl) {
+        searchEl.focus();
+        searchEl.select();
+      }
+    }, 40);
+  };
+
   const addProductToKasir = (prod: any) => {
     const kdBr = String(prod.kd_br || prod.kd || prod.id || "").trim();
     if (!kdBr) return;
@@ -290,21 +286,14 @@ export default function OrderKasirPage() {
     setSearchResults([]);
     setHighlightedIndex(-1);
 
-    // Di desktop fokus ke kolom qty; di layar sentuh HP/tablet biarkan keyboard tertutup rapi
-    const isTouchDevice =
-      typeof window !== "undefined" &&
-      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
-    if (isTouchDevice) {
-      searchInputRef.current?.blur();
-    } else {
-      setTimeout(() => {
-        const qtyEl = qtyInputRefs.current[kdBr];
-        if (qtyEl) {
-          qtyEl.focus();
-          qtyEl.select();
-        }
-      }, 50);
-    }
+    // Fokus langsung ke kolom Qty baik di PC maupun di HP agar langsung ketik angka
+    setTimeout(() => {
+      const qtyEl = qtyInputRefs.current[kdBr];
+      if (qtyEl) {
+        qtyEl.focus();
+        qtyEl.select();
+      }
+    }, 60);
   };
 
   const searchBarang = async (query: string, autoPickExact: boolean) => {
@@ -386,13 +375,11 @@ export default function OrderKasirPage() {
     if (e.key === "Escape") {
       setSearchResults([]);
       setHighlightedIndex(-1);
-      searchInputRef.current?.blur();
       return;
     }
 
     if (e.key === "Enter") {
       e.preventDefault();
-      searchInputRef.current?.blur();
       if (searchResults.length > 0 && highlightedIndex >= 0) {
         const chosen = searchResults[highlightedIndex];
         if (chosen) {
@@ -408,7 +395,6 @@ export default function OrderKasirPage() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    searchInputRef.current?.blur();
     if (searchResults.length > 0 && highlightedIndex >= 0) {
       const chosen = searchResults[highlightedIndex];
       if (chosen) {
@@ -739,7 +725,7 @@ export default function OrderKasirPage() {
                       setSearchInput("");
                       setSearchResults([]);
                       setHighlightedIndex(-1);
-                      searchInputRef.current?.blur();
+                      focusSearchBox();
                     }}
                     className="p-1 text-slate-400 hover:text-slate-600"
                   >
@@ -886,7 +872,13 @@ export default function OrderKasirPage() {
                         />
                       </td>
                       <td className="p-1 text-center">
-                        <div className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden">
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            focusSearchBox();
+                          }}
+                          className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden"
+                        >
                           <button
                             type="button"
                             onClick={() =>
@@ -902,13 +894,15 @@ export default function OrderKasirPage() {
                             }}
                             type="text"
                             inputMode="numeric"
+                            pattern="[0-9]*"
+                            enterKeyHint="done"
                             maxLength={4}
                             value={item.qty}
                             onFocus={(e) => e.target.select()}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.preventDefault();
-                                e.currentTarget.blur();
+                                focusSearchBox();
                               }
                             }}
                             onChange={(e) => {
@@ -929,7 +923,7 @@ export default function OrderKasirPage() {
                           >
                             <FiPlus className="w-3 h-3" />
                           </button>
-                        </div>
+                        </form>
                       </td>
                       <td className="p-2 text-right font-mono text-slate-600">
                         {item.harga.toLocaleString("id-ID")}
@@ -1039,6 +1033,7 @@ export default function OrderKasirPage() {
                   type="button"
                   onClick={() => {
                     setSuccessInfo(null);
+                    focusSearchBox();
                   }}
                   className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition"
                 >
