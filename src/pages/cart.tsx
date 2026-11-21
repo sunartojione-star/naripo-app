@@ -101,8 +101,9 @@ export default function CartPage() {
     telepon: "-",
     kontak: "-",
     dept: "UTM",
-    user: "ADMIN",
+    user: "MEMBER",
     kd_cus: "",
+    jenis: "MEMBER",
   });
 
   const items = useCartStore((state: any) => state.items) || [];
@@ -134,15 +135,29 @@ export default function CartPage() {
 
       if (savedUserStr) {
         const savedUser = JSON.parse(savedUserStr);
+        const roleRaw = String(
+          savedUser?.role || savedUser?.Hak || savedUser?.level_user || ""
+        )
+          .trim()
+          .toLowerCase();
+        const isStaffAdmin =
+          roleRaw === "admin" ||
+          roleRaw === "super admin" ||
+          roleRaw === "superadmin" ||
+          roleRaw === "kasir";
+
         setCustomerInfo({
           nama: savedUser?.name || savedUser?.nama || "CUSTOMER",
-          alamat: savedUser?.alamat || "JL. Cemara 34",
-          kota: savedUser?.kota || "MATARAM",
+          alamat: savedUser?.alamat || "-",
+          kota: savedUser?.kota || "-",
           telepon: savedUser?.telepon || savedUser?.hp || "-",
           kontak: savedUser?.kontak || "-",
           dept: savedUser?.dept || "UTM",
-          user: savedUser?.username || "ADMIN",
-          kd_cus: savedUser?.kd_cus || localKdCus || savedUser?.username || "A135",
+          user: savedUser?.username || savedUser?.nama || "MEMBER",
+          kd_cus: String(
+            savedUser?.kd_cus || localKdCus || savedUser?.username || ""
+          ).trim(),
+          jenis: isStaffAdmin ? "ADMIN" : "MEMBER",
         });
       }
     } catch (err) {
@@ -234,14 +249,20 @@ export default function CartPage() {
       return;
     }
 
+    const activeKdCus = String(customerInfo.kd_cus || "").trim();
+    if (!activeKdCus) {
+      setErrorMsg("Kode pelanggan (kd_cus) tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+
     setLoading(true);
-    const activeKdCus = String(customerInfo.kd_cus || "A135").trim();
 
     try {
       const now = new Date();
       const today = getLocalDateYYYYMMDD(now);
       const jamSekarang = now.toLocaleTimeString("id-ID", { hour12: false });
-      const namaUserLogin = customerInfo.nama || customerInfo.user || "ADMIN";
+      const namaUserLogin = customerInfo.nama || customerInfo.user || "MEMBER";
+      const jenisOrder = customerInfo.jenis || "MEMBER";
       const roundedTotal = Math.round(subtotal);
 
       const headerPayload = {
@@ -257,8 +278,8 @@ export default function CartPage() {
         KD_CUS: activeKdCus,
         nama_pelanggan: customerInfo.nama,
         NAMA_PELANGGAN: customerInfo.nama,
-        status: "PROSES PENGAMBILAN",
-        STATUS: "PROSES PENGAMBILAN",
+        status: "PROSES ORDER",
+        STATUS: "PROSES ORDER",
         total: roundedTotal,
         TOTAL: roundedTotal,
         jumlah: roundedTotal,
@@ -281,8 +302,8 @@ export default function CartPage() {
         USER: namaUserLogin,
         kpb: namaUserLogin,
         KPB: namaUserLogin,
-        jenis: "ADMIN",
-        JENIS: "ADMIN",
+        jenis: jenisOrder,
+        JENIS: jenisOrder,
       };
 
       const resHeader = await fetch(getEndpoint("po-note"), {
@@ -453,7 +474,7 @@ export default function CartPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-24 text-slate-500 font-medium">Kode Cus:</span>
-                  <span className="font-mono font-bold text-blue-600">{customerInfo.kd_cus || "A135"}</span>
+                  <span className="font-mono font-bold text-blue-600">{customerInfo.kd_cus || "-"}</span>
                 </div>
               </div>
 

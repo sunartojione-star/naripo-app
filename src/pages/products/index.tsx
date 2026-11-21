@@ -32,6 +32,35 @@ interface JenisProduk {
   nama: string;
 }
 
+function seededRandom(seed: number): () => number {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+function shuffleWithSeed<T>(list: T[], seed: number): T[] {
+  const arr = [...list];
+  const rand = seededRandom(seed);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function createFreshSeed(): number {
+  const now = new Date();
+  const dailyPart =
+    now.getFullYear() * 10000 +
+    (now.getMonth() + 1) * 100 +
+    now.getDate();
+  const refreshPart = Math.floor(Math.random() * 10000) + 1;
+  return dailyPart + refreshPart;
+}
+
 export default function ProductsPage() {
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [products, setProducts] = useState<Barang[]>([]);
@@ -48,6 +77,12 @@ export default function ProductsPage() {
   const [selectedKet, setSelectedKet] = useState<string>("");
   const [selectedKd, setSelectedKd] = useState<string>("");
 
+  // Seed & halaman awal acak otomatis setiap kali halaman dibuka / di-refresh & setiap hari
+  const [freshSeed, setFreshSeed] = useState<number>(() => createFreshSeed());
+  const [startPageOffset, setStartPageOffset] = useState<number>(
+    () => (createFreshSeed() % 35) + 1
+  );
+
   // State efek bayangan sticky search bar saat di-scroll
   const [isScrolled, setIsScrolled] = useState<boolean>(false);
 
@@ -60,6 +95,7 @@ export default function ProductsPage() {
   });
 
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const rawApiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
@@ -67,12 +103,21 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setIsMounted(true);
+    const newSeed = createFreshSeed();
+    setFreshSeed(newSeed);
+    setStartPageOffset((newSeed % 35) + 1);
   }, []);
 
-  // Deteksi scroll untuk bayangan halus pada sticky search bar
+  // Tutup keyboard HP otomatis saat layar mulai di-scroll & aktifkan bayangan sticky bar
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 30);
+      if (
+        window.scrollY > 20 &&
+        document.activeElement === searchInputRef.current
+      ) {
+        searchInputRef.current?.blur();
+      }
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
@@ -188,6 +233,11 @@ export default function ProductsPage() {
       setErrorProducts("");
       const token = localStorage.getItem("token");
 
+      // Saat mencari atau memakai filter Harga/Gudang, mulai dari halaman 1 agar semua data ditemukan
+      const isFiltering = Boolean(debouncedSearch || selectedKet || selectedKd);
+      const effectiveStartPage = isFiltering ? 1 : startPageOffset;
+      const pageToFetch = effectiveStartPage + (currentPage - 1);
+
       try {
         const searchParam = debouncedSearch
           ? `&search=${encodeURIComponent(debouncedSearch)}`
@@ -197,12 +247,12 @@ export default function ProductsPage() {
           ? `&ket=${encodeURIComponent(selectedKet)}`
           : "";
 
-        let endpoint = `${apiUrl}/barangs?status=Digunakan&page=${currentPage}&limit=30${searchParam}${ketParam}`;
+        let endpoint = `${apiUrl}/barangs?status=Digunakan&page=${pageToFetch}&limit=30${searchParam}${ketParam}`;
 
         if (selectedKd) {
           endpoint = `${apiUrl}/barangs/by-kd?kd=${encodeURIComponent(
             selectedKd
-          )}&page=${currentPage}&limit=30${searchParam}${ketParam}`;
+          )}&page=${pageToFetch}&limit=30${searchParam}${ketParam}`;
         }
 
         let resProducts = await fetch(endpoint, {
@@ -240,6 +290,11 @@ export default function ProductsPage() {
           prodList = resultProducts.data;
         }
 
+        // Acak urutan kartu secara otomatis saat tampilan katalog default (tidak sedang mencari)
+        if (!debouncedSearch && prodList.length > 1) {
+          prodList = shuffleWithSeed(prodList, freshSeed + currentPage);
+        }
+
         if (currentPage === 1) {
           setProducts(prodList);
         } else {
@@ -252,14 +307,26 @@ export default function ProductsPage() {
           });
         }
 
+        const serverTotalPages =
+          resultProducts.pagination?.total_pages ||
+          resultProducts.meta?.last_page ||
+          1;
+        const remainingPages = Math.max(
+          1,
+          serverTotalPages - (effectiveStartPage - 1)
+        );
+
         if (resultProducts.pagination) {
-          setPagination(resultProducts.pagination);
+          setPagination({
+            ...resultProducts.pagination,
+            total_pages: remainingPages,
+          });
         } else if (resultProducts.meta) {
           setPagination({
-            page: resultProducts.meta.current_page || currentPage,
+            page: currentPage,
             limit: resultProducts.meta.per_page || 30,
             total: resultProducts.meta.total || null,
-            total_pages: resultProducts.meta.last_page || 1,
+            total_pages: remainingPages,
           });
         }
       } catch (err: any) {
@@ -278,10 +345,12 @@ export default function ProductsPage() {
     debouncedSearch,
     selectedKet,
     selectedKd,
+    freshSeed,
+    startPageOffset,
     apiUrl,
   ]);
 
-  // Infinite Scroll Observer (otomatis muat halaman berikutnya saat mendekati bawah)
+  // Infinite Scroll Observer
   useEffect(() => {
     if (!isMounted || loadingProducts || loadingMore) return;
     if (currentPage >= pagination.total_pages) return;
@@ -369,20 +438,34 @@ export default function ProductsPage() {
     setSearchQuery(e.target.value);
   };
 
+  // Tutup keyboard HP saat tombol Cari / Enter ditekan
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    searchInputRef.current?.blur();
+    setDebouncedSearch(searchQuery);
+    setCurrentPage(1);
+  };
+
   const handleFilterKet = (ketValue: string) => {
+    searchInputRef.current?.blur();
     setSelectedKet(ketValue);
     setCurrentPage(1);
   };
 
   const handleFilterKd = (kdValue: string) => {
+    searchInputRef.current?.blur();
     setSelectedKd(kdValue);
     setCurrentPage(1);
   };
 
   const handleResetFilters = () => {
+    searchInputRef.current?.blur();
+    const newSeed = createFreshSeed();
     setSelectedKet("");
     setSelectedKd("");
     setSearchQuery("");
+    setFreshSeed(newSeed);
+    setStartPageOffset((newSeed % 35) + 1);
     setCurrentPage(1);
   };
 
@@ -424,7 +507,7 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        {/* 2. KOTAK PENCARIAN STICKY (Berhenti di bawah navbar saat di-scroll ke bawah) */}
+        {/* 2. KOTAK PENCARIAN STICKY */}
         <div
           className={`sticky top-14 sm:top-16 z-30 -mx-2.5 px-2.5 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-1.5 transition-all duration-150 ${
             isScrolled
@@ -432,32 +515,46 @@ export default function ProductsPage() {
               : "bg-gray-50/90 backdrop-blur-xs"
           }`}
         >
-          <div className="relative w-full">
+          <form onSubmit={handleSearchSubmit} className="relative w-full">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
               <FiSearch className="w-4 h-4" />
             </span>
             <input
-              type="text"
+              ref={searchInputRef}
+              type="search"
+              enterKeyHint="search"
               value={searchQuery}
               onChange={handleSearchChange}
               placeholder="Cari nama, barcode, harga..."
-              className="w-full pl-9 pr-9 py-1.5 sm:py-2 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-xs"
+              className="w-full pl-9 pr-20 py-1.5 sm:py-2 bg-white border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition shadow-xs [&::-webkit-search-cancel-button]:hidden"
             />
-            {searchQuery && (
+            <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-1.5">
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    searchInputRef.current?.blur();
+                  }}
+                  aria-label="Hapus pencarian"
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <FiX className="w-4 h-4" />
+                </button>
+              )}
               <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                aria-label="Hapus pencarian"
-                className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-gray-400 hover:text-gray-600"
+                type="submit"
+                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold active:scale-95 transition"
               >
-                <FiX className="w-4 h-4" />
+                Cari
               </button>
-            )}
-          </div>
+            </div>
+          </form>
         </div>
 
-        {/* 3. BARIS FILTER RINGKAS (Swipe horizontal tanpa scrollbar) */}
+        {/* 3. BARIS FILTER RINGKAS (Harga & Gudang saja, tanpa menu tambahan) */}
         <div className="bg-white px-2.5 py-2 sm:p-3 rounded-xl shadow-xs border border-gray-100 mt-1.5 mb-3 space-y-1.5">
+          {/* Baris Filter Harga */}
           <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <span className="text-[11px] font-bold text-blue-600 shrink-0 mr-0.5 flex items-center gap-1 min-w-[54px]">
               <FiFilter className="w-3 h-3" /> Harga:
@@ -488,6 +585,7 @@ export default function ProductsPage() {
             })}
           </div>
 
+          {/* Baris Filter Gudang */}
           <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <span className="text-[11px] font-bold text-emerald-600 shrink-0 mr-0.5 flex items-center gap-1 min-w-[54px]">
               <FiLayers className="w-3 h-3" /> Gudang:

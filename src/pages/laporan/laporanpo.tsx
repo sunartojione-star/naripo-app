@@ -199,11 +199,11 @@ export default function LaporanPOPage() {
     return reports.filter((item) => {
       const statusText = (item.status || "PROSES ORDER").trim().toUpperCase();
 
-      if (
-        selectedStatus !== "ALL" &&
-        statusText !== selectedStatus.toUpperCase()
-      ) {
-        return false;
+      if (selectedStatus !== "ALL") {
+        const target = selectedStatus.toUpperCase();
+        if (statusText !== target && !statusText.includes(target)) {
+          return false;
+        }
       }
 
       if (startDate || endDate) {
@@ -237,22 +237,27 @@ export default function LaporanPOPage() {
     setCurrentPage(1);
   };
 
-  // Helper Warna Status Badge
+  // Helper Warna Status Badge (Disamakan dengan warna tombol di VB)
   const getStatusBadgeStyle = (statusRaw: string) => {
-    const status = (statusRaw || "").trim().toUpperCase();
+    const status = (statusRaw || "PROSES ORDER").trim().toUpperCase();
 
-    switch (status) {
-      case "PROSES ORDER":
-        return "bg-blue-100 text-blue-700 border border-blue-200";
-      case "PROSES PENGAMBILAN":
-        return "bg-amber-100 text-amber-700 border border-amber-200";
-      case "PROSES INPUT":
-        return "bg-purple-100 text-purple-700 border border-purple-200";
-      case "PROSES KIRIM":
-        return "bg-emerald-100 text-emerald-700 border border-emerald-200";
-      default:
-        return "bg-gray-100 text-gray-700 border border-gray-200";
+    if (status.includes("ORDER")) {
+      // Merah (seperti EDIT PROSES ORDER [F1])
+      return "bg-red-100 text-red-700 border border-red-300";
     }
+    if (status.includes("INPUT")) {
+      // Kuning (seperti EDIT PROSES INPUT [F3])
+      return "bg-amber-100 text-amber-800 border border-amber-300";
+    }
+    if (status.includes("PENGAMBILAN")) {
+      // Ungu / Magenta (seperti EDIT PROSES PENGAMBILAN [F5])
+      return "bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300";
+    }
+    if (status.includes("KIRIM")) {
+      // Hijau (seperti EDIT PROSES KIRIM [F6])
+      return "bg-emerald-100 text-emerald-700 border border-emerald-300";
+    }
+    return "bg-gray-100 text-gray-700 border border-gray-200";
   };
 
   // --- FUNGSI PRINT PDF / CETAK ORDERAN ---
@@ -532,8 +537,8 @@ export default function LaporanPOPage() {
                   >
                     <option value="ALL">Semua Status</option>
                     <option value="PROSES ORDER">PROSES ORDER</option>
-                    <option value="PROSES PENGAMBILAN">PROSES PENGAMBILAN</option>
                     <option value="PROSES INPUT">PROSES INPUT</option>
+                    <option value="PROSES PENGAMBILAN">PROSES PENGAMBILAN</option>
                     <option value="PROSES KIRIM">PROSES KIRIM</option>
                   </select>
                 </div>

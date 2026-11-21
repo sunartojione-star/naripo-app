@@ -108,6 +108,7 @@ export default function OrderKasirPage() {
     nama: "CUSTOMER",
     user: "ADMIN",
     kd_cus: "",
+    jenis: "ADMIN",
   });
 
   const rawApiUrl =
@@ -145,10 +146,25 @@ export default function OrderKasirPage() {
         localStorage.getItem("kd_cus") || localStorage.getItem("kdCus") || "";
       if (savedUserStr) {
         const u = JSON.parse(savedUserStr);
+        const roleRaw = String(
+          u?.role || u?.Hak || u?.level_user || ""
+        )
+          .trim()
+          .toUpperCase();
+        const jenisDetected =
+          roleRaw === "KASIR"
+            ? "KASIR"
+            : roleRaw.includes("ADMIN")
+            ? "ADMIN"
+            : "ADMIN";
+
         setCustomerInfo({
           nama: u?.name || u?.nama || "CUSTOMER",
-          user: u?.username || "ADMIN",
-          kd_cus: u?.kd_cus || localKdCus || u?.username || "A135",
+          user: u?.username || u?.nama || "ADMIN",
+          kd_cus: String(
+            u?.kd_cus || localKdCus || u?.username || ""
+          ).trim(),
+          jenis: jenisDetected,
         });
       }
     } catch {}
@@ -157,6 +173,20 @@ export default function OrderKasirPage() {
       stopScanner();
     };
   }, [apiUrl]);
+
+  // Tutup keyboard HP otomatis saat layar mulai di-scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      if (
+        window.scrollY > 20 &&
+        document.activeElement === searchInputRef.current
+      ) {
+        searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Simpan otomatis ke localStorage setiap kali daftar barang / catatan berubah
   useEffect(() => {
@@ -260,13 +290,21 @@ export default function OrderKasirPage() {
     setSearchResults([]);
     setHighlightedIndex(-1);
 
-    setTimeout(() => {
-      const qtyEl = qtyInputRefs.current[kdBr];
-      if (qtyEl) {
-        qtyEl.focus();
-        qtyEl.select();
-      }
-    }, 50);
+    // Di desktop fokus ke kolom qty; di layar sentuh HP/tablet biarkan keyboard tertutup rapi
+    const isTouchDevice =
+      typeof window !== "undefined" &&
+      ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+    if (isTouchDevice) {
+      searchInputRef.current?.blur();
+    } else {
+      setTimeout(() => {
+        const qtyEl = qtyInputRefs.current[kdBr];
+        if (qtyEl) {
+          qtyEl.focus();
+          qtyEl.select();
+        }
+      }, 50);
+    }
   };
 
   const searchBarang = async (query: string, autoPickExact: boolean) => {
@@ -348,11 +386,13 @@ export default function OrderKasirPage() {
     if (e.key === "Escape") {
       setSearchResults([]);
       setHighlightedIndex(-1);
+      searchInputRef.current?.blur();
       return;
     }
 
     if (e.key === "Enter") {
       e.preventDefault();
+      searchInputRef.current?.blur();
       if (searchResults.length > 0 && highlightedIndex >= 0) {
         const chosen = searchResults[highlightedIndex];
         if (chosen) {
@@ -366,7 +406,23 @@ export default function OrderKasirPage() {
     }
   };
 
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    searchInputRef.current?.blur();
+    if (searchResults.length > 0 && highlightedIndex >= 0) {
+      const chosen = searchResults[highlightedIndex];
+      if (chosen) {
+        addProductToKasir(chosen);
+        return;
+      }
+    }
+    if (searchInput.trim()) {
+      searchBarang(searchInput.trim(), true);
+    }
+  };
+
   const startScanner = async () => {
+    searchInputRef.current?.blur();
     setErrorMsg(null);
     setIsScannerActive(true);
 
@@ -472,14 +528,20 @@ export default function OrderKasirPage() {
       return;
     }
 
+    const activeKdCus = String(customerInfo.kd_cus || "").trim();
+    if (!activeKdCus) {
+      setErrorMsg("Kode pelanggan (kd_cus) tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+
     setLoading(true);
-    const activeKdCus = String(customerInfo.kd_cus || "A135").trim();
 
     try {
       const now = new Date();
       const today = getLocalDateYYYYMMDD(now);
       const jamSekarang = now.toLocaleTimeString("id-ID", { hour12: false });
       const namaUserLogin = customerInfo.nama || customerInfo.user || "ADMIN";
+      const jenisOrder = customerInfo.jenis || "ADMIN";
       const ketFinal = catatan.trim()
         ? `Kirim: ${deliveryDate} | ${catatan.trim()}`
         : `Kirim: ${deliveryDate}`;
@@ -497,8 +559,8 @@ export default function OrderKasirPage() {
         KD_CUS: activeKdCus,
         nama_pelanggan: customerInfo.nama,
         NAMA_PELANGGAN: customerInfo.nama,
-        status: "PROSES PENGAMBILAN",
-        STATUS: "PROSES PENGAMBILAN",
+        status: "PROSES ORDER",
+        STATUS: "PROSES ORDER",
         total: grandTotal,
         TOTAL: grandTotal,
         jumlah: grandTotal,
@@ -521,8 +583,8 @@ export default function OrderKasirPage() {
         USER: namaUserLogin,
         kpb: namaUserLogin,
         KPB: namaUserLogin,
-        jenis: "ADMIN",
-        JENIS: "ADMIN",
+        jenis: jenisOrder,
+        JENIS: jenisOrder,
       };
 
       const resHeader = await fetch(`${apiUrl}/po-note`, {
@@ -635,7 +697,7 @@ export default function OrderKasirPage() {
                 Order Kasir (PO)
               </h1>
               <p className="text-[10px] text-slate-300">
-                {customerInfo.nama} ({customerInfo.kd_cus || "A135"})
+                {customerInfo.nama} ({customerInfo.kd_cus || "-"})
               </p>
             </div>
           </div>
@@ -656,32 +718,41 @@ export default function OrderKasirPage() {
 
         {/* STICKY SCAN BARCODE & CARI BARANG */}
         <div className="sticky top-14 sm:top-16 z-30 bg-white rounded-2xl border-2 border-blue-500 p-2.5 shadow-sm space-y-2">
-          <div className="flex items-center gap-2">
+          <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
             <div className="relative flex-1">
               <FiSearch className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 ref={searchInputRef}
-                type="text"
-                autoFocus
+                type="search"
+                enterKeyHint="search"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Scan Barcode atau ketik nama / kode (PgUp/PgDn + Enter)..."
-                className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-blue-500"
+                placeholder="Scan Barcode atau ketik nama / kode..."
+                className="w-full pl-9 pr-20 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:border-blue-500 [&::-webkit-search-cancel-button]:hidden"
               />
-              {searchInput && (
+              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput("");
+                      setSearchResults([]);
+                      setHighlightedIndex(-1);
+                      searchInputRef.current?.blur();
+                    }}
+                    className="p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={() => {
-                    setSearchInput("");
-                    setSearchResults([]);
-                    setHighlightedIndex(-1);
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  type="submit"
+                  className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold active:scale-95 transition"
                 >
-                  <FiX className="w-4 h-4" />
+                  Cari
                 </button>
-              )}
+              </div>
             </div>
 
             <button
@@ -695,7 +766,7 @@ export default function OrderKasirPage() {
                 {isScannerActive ? "Tutup" : "Scan"}
               </span>
             </button>
-          </div>
+          </form>
 
           {isScannerActive && (
             <div className="relative rounded-xl overflow-hidden bg-black border border-emerald-500 p-1">
@@ -837,7 +908,7 @@ export default function OrderKasirPage() {
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.preventDefault();
-                                searchInputRef.current?.focus();
+                                e.currentTarget.blur();
                               }
                             }}
                             onChange={(e) => {
@@ -968,7 +1039,6 @@ export default function OrderKasirPage() {
                   type="button"
                   onClick={() => {
                     setSuccessInfo(null);
-                    searchInputRef.current?.focus();
                   }}
                   className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs transition"
                 >
