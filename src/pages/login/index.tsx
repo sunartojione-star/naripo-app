@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import {
   FiArrowRight,
   FiShield,
 } from "react-icons/fi";
+import { detectBranchBrand, BranchBrand } from "@/components/Layout/Header";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -19,7 +20,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [branchBrand, setBranchBrand] = useState<BranchBrand>(() =>
+    detectBranchBrand()
+  );
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setBranchBrand(detectBranchBrand(window.location.hostname));
+    }
+  }, []);
 
   // Helper ID perangkat unik agar 1 akun bisa aktif di banyak HP sekaligus
   const getOrCreateDeviceId = () => {
@@ -103,7 +113,11 @@ export default function LoginPage() {
   return (
     <>
       <Head>
-        <title>Login - Koperasi Niaga Abadi</title>
+        <title>
+          {branchBrand.subtitle
+            ? `Login - ${branchBrand.subtitle}`
+            : "Login - Koperasi Niaga Abadi"}
+        </title>
       </Head>
 
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-100/60 flex items-center justify-center p-4 relative overflow-hidden">
@@ -117,11 +131,12 @@ export default function LoginPage() {
             <div className="text-center mb-6">
               <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/25 mb-3">
                 <img
-                  src="/Logo_Niaga192X192.png"
-                  alt="Logo Niaga"
+                  src={branchBrand.logo}
+                  alt={`Logo ${branchBrand.subtitle || "Niaga"}`}
                   className="w-10 h-10 object-contain drop-shadow"
                   onError={(e) => {
-                    (e.target as HTMLElement).style.display = "none";
+                    (e.currentTarget as HTMLImageElement).src =
+                      "/Logo_Niaga192X192.png";
                   }}
                 />
               </div>
@@ -129,6 +144,11 @@ export default function LoginPage() {
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-800 tracking-tight">
                 Koperasi Niaga Abadi
               </h1>
+              {branchBrand.subtitle && (
+                <p className="text-xs font-bold text-blue-600 tracking-wide uppercase mt-0.5">
+                  {branchBrand.subtitle}
+                </p>
+              )}
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
                 Masuk ke akun Anda untuk mulai bertransaksi
               </p>

@@ -27,12 +27,12 @@ import {
 import { useCartStoreBS } from "@/store/cartStoreBS";
 import { useCartStore } from "@/store/cartStore";
 
-interface BranchBrand {
+export interface BranchBrand {
   logo: string;
   subtitle: string;
 }
 
-function detectBranchBrand(hostname: string = ""): BranchBrand {
+export function detectBranchBrand(hostname: string = ""): BranchBrand {
   const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "").toLowerCase();
   const host = hostname.toLowerCase();
   const combined = `${host} ${apiUrl}`;
@@ -40,12 +40,18 @@ function detectBranchBrand(hostname: string = ""): BranchBrand {
   if (
     combined.includes("pdaren") ||
     combined.includes("pd-aren") ||
-    combined.includes("tangerang") ||
     combined.includes("103.125.42.217")
   ) {
     return {
       logo: "/Logo_Niaga192X192.png",
       subtitle: "NIAGA PD AREN",
+    };
+  }
+
+  if (combined.includes("tangerang") || combined.includes("103.188.170.133")) {
+    return {
+      logo: "/tangerang%20192.png",
+      subtitle: "NIAGA TANGERANG",
     };
   }
 
