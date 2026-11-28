@@ -41,6 +41,12 @@ interface DetailItem {
   sub_total: number;
 }
 
+interface SaveFeedbackModal {
+  type: "success" | "error" | "warning";
+  title: string;
+  message: string;
+}
+
 const QUICK_PAGE_STEP = 5;
 
 const getBarangHppTerakhir = (barang: Barang): number => {
@@ -75,9 +81,6 @@ export default function HalamanOpname() {
 
   // Detail / Grid Items State
   const [items, setItems] = useState<DetailItem[]>([]);
-  const [focusedMobileQtyIndex, setFocusedMobileQtyIndex] = useState<
-    number | null
-  >(null);
 
   // Ref Tabel & Input (Pisah antara HP dan PC agar .focus() tidak salah sasaran)
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -103,8 +106,16 @@ export default function HalamanOpname() {
   const html5QrCodeRef = useRef<any>(null);
 
   // Modal Popup Edit & Hapus Item saat baris diklik
-  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(
+    null
+  );
   const [showActionModal, setShowActionModal] = useState<boolean>(false);
+
+  // Modal Konfirmasi & Hasil Simpan (In-App Popup)
+  const [showSaveConfirmModal, setShowSaveConfirmModal] =
+    useState<boolean>(false);
+  const [saveFeedbackModal, setSaveFeedbackModal] =
+    useState<SaveFeedbackModal | null>(null);
 
   const rawApiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://103.125.42.217:8081/api";
@@ -178,7 +189,15 @@ export default function HalamanOpname() {
   // Navigasi Keyboard Page Up & Page Down untuk tabel jika dropdown pencarian tidak sedang terbuka
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showActionModal || showCameraModal || showQuickDropdown) return;
+      if (
+        showActionModal ||
+        showCameraModal ||
+        showQuickDropdown ||
+        showSaveConfirmModal ||
+        saveFeedbackModal !== null
+      ) {
+        return;
+      }
 
       if (e.key === "PageDown") {
         e.preventDefault();
@@ -191,7 +210,13 @@ export default function HalamanOpname() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showActionModal, showCameraModal, showQuickDropdown]);
+  }, [
+    showActionModal,
+    showCameraModal,
+    showQuickDropdown,
+    showSaveConfirmModal,
+    saveFeedbackModal,
+  ]);
 
   // Reset & auto-scroll highlight dropdown pencarian barang
   useEffect(() => {
@@ -382,7 +407,6 @@ export default function HalamanOpname() {
     setQuickKeyword("");
     setQuickResults([]);
     setShowQuickDropdown(false);
-    setFocusedMobileQtyIndex(targetIndex);
 
     setTimeout(() => {
       const isMobile =
@@ -625,7 +649,11 @@ export default function HalamanOpname() {
             ) || list[0];
           addItemToKeranjang(matched);
         } else {
-          alert(`Barang dengan barcode/kode "${kw}" tidak ditemukan.`);
+          setSaveFeedbackModal({
+            type: "warning",
+            title: "Barang Tidak Ditemukan",
+            message: `Barang dengan barcode/kode "${kw}" tidak ditemukan.`,
+          });
         }
       } catch (err) {
         console.error(err);
@@ -715,7 +743,6 @@ export default function HalamanOpname() {
         .filter((_, idx) => idx !== selectedItemIndex)
         .map((item, idx) => ({ ...item, no_urut: idx + 1 }))
     );
-    setFocusedMobileQtyIndex(null);
     setShowActionModal(false);
     setSelectedItemIndex(null);
     focusQuickInput(true);
@@ -757,7 +784,11 @@ export default function HalamanOpname() {
 
   const handleDownloadPdf = () => {
     if (items.length === 0) {
-      alert("Belum ada item barang untuk diunduh sebagai PDF.");
+      setSaveFeedbackModal({
+        type: "warning",
+        title: "Belum Ada Data",
+        message: "Belum ada item barang untuk diunduh sebagai PDF.",
+      });
       return;
     }
     const prevTitle = document.title;
@@ -772,35 +803,87 @@ export default function HalamanOpname() {
     }, 500);
   };
 
-  const handleSimpan = async () => {
+  // Langkah 1: Validasi lalu buka Popup Konfirmasi Simpan (Batal / OK)
+  const handleRequestSimpan = () => {
+    if (loading) return;
+
     const token =
       localStorage.getItem("token") || localStorage.getItem("auth_token");
     if (!token) {
-      alert("Silakan login terlebih dahulu.");
+      setSaveFeedbackModal({
+        type: "error",
+        title: "Belum Login",
+        message: "Silakan login terlebih dahulu.",
+      });
       return;
     }
 
     const cleanNoBuku = noBuku.trim().toUpperCase();
     if (!cleanNoBuku) {
-      alert("Nomor Buku wajib diisi!");
+      setSaveFeedbackModal({
+        type: "warning",
+        title: "Nomor Buku Kosong",
+        message: "Nomor Buku wajib diisi sebelum menyimpan opname!",
+      });
       return;
     }
 
-    const isDup = noBukuExists || (await checkDuplicateNoBuku(cleanNoBuku));
-    if (isDup) {
-      alert(
-        `Nomor Buku "${cleanNoBuku}" sudah ada di database! Tidak bisa input nomor buku yang sama.`
-      );
+    if (noBukuExists) {
+      setSaveFeedbackModal({
+        type: "error",
+        title: "Nomor Buku Duplikat",
+        message: `Nomor Buku "${cleanNoBuku}" sudah ada di database! Tidak bisa input nomor buku yang sama.`,
+      });
       return;
     }
 
     if (items.length === 0) {
-      alert("Belum ada item barang yang diinput pada tabel opname!");
+      setSaveFeedbackModal({
+        type: "warning",
+        title: "Keranjang Masih Kosong",
+        message: "Belum ada item barang yang diinput pada tabel opname!",
+      });
       return;
     }
 
+    setShowSaveConfirmModal(true);
+  };
+
+  // Langkah 2: Eksekusi Simpan ke Server setelah user menekan OK
+  const executeSimpan = async () => {
+    if (loading) return;
+
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("auth_token");
+    if (!token) {
+      setShowSaveConfirmModal(false);
+      setSaveFeedbackModal({
+        type: "error",
+        title: "Belum Login",
+        message: "Silakan login terlebih dahulu.",
+      });
+      return;
+    }
+
+    const cleanNoBuku = noBuku.trim().toUpperCase();
+    if (!cleanNoBuku || items.length === 0) {
+      setShowSaveConfirmModal(false);
+      return;
+    }
+
+    setShowSaveConfirmModal(false);
     setLoading(true);
     try {
+      const isDup = noBukuExists || (await checkDuplicateNoBuku(cleanNoBuku));
+      if (isDup) {
+        setSaveFeedbackModal({
+          type: "error",
+          title: "Nomor Buku Duplikat",
+          message: `Nomor Buku "${cleanNoBuku}" sudah ada di database! Tidak bisa input nomor buku yang sama.`,
+        });
+        return;
+      }
+
       const payload = {
         no_buku: cleanNoBuku,
         tanggal: tanggal,
@@ -834,14 +917,20 @@ export default function HalamanOpname() {
       const result = await res.json().catch(() => null);
 
       if (res.ok && result?.success) {
-        alert("Stok Opname berhasil disimpan!");
+        const savedItemCount = items.length;
+        const savedTotalQty = totalQty;
         localStorage.removeItem("opname_draft_data");
         setItems([]);
-        setFocusedMobileQtyIndex(null);
         setNoBuku("");
         setNoBukuExists(false);
         setCatatan("-");
-        focusQuickInput();
+        setSaveFeedbackModal({
+          type: "success",
+          title: "Stok Opname Tersimpan",
+          message: `Data opname No. Buku "${cleanNoBuku}" (${savedItemCount} item, ${formatAngka(
+            savedTotalQty
+          )} qty) berhasil disimpan ke server.`,
+        });
       } else {
         if (res.status === 409 || res.status === 422) {
           const msg = String(result?.message || "");
@@ -852,20 +941,36 @@ export default function HalamanOpname() {
             setNoBukuExists(true);
           }
         }
-        alert(result?.message || "Gagal menyimpan data opname.");
+        setSaveFeedbackModal({
+          type: "error",
+          title: "Gagal Menyimpan",
+          message: result?.message || "Gagal menyimpan data opname.",
+        });
       }
     } catch (err: any) {
       console.error("Error simpan opname:", err);
-      alert("Terjadi kesalahan koneksi ke server.");
+      setSaveFeedbackModal({
+        type: "error",
+        title: "Gagal Menyimpan",
+        message: "Terjadi kesalahan koneksi ke server.",
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCloseFeedbackModal = () => {
+    const wasSuccess = saveFeedbackModal?.type === "success";
+    setSaveFeedbackModal(null);
+    if (wasSuccess) {
+      focusQuickInput();
     }
   };
 
   if (!isMounted || !authChecked) {
     return (
       <Layout>
-        <div className="min-h-screen flex items-center justify-center text-sm text-slate-400">
+        <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">
           Memeriksa hak akses...
         </div>
       </Layout>
@@ -896,27 +1001,27 @@ export default function HalamanOpname() {
         }
       `}</style>
 
-      {/* TAMPILAN LAYAR NORMAL */}
-      <div className="no-print max-w-7xl mx-auto px-1.5 sm:px-4 py-3 sm:py-6 pb-20 lg:pb-6 bg-slate-900 text-white rounded-xl shadow-2xl">
+      {/* TAMPILAN LAYAR NORMAL (TEMA TERANG) */}
+      <div className="no-print max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-6 pb-20 lg:pb-8 bg-slate-50 text-slate-800 rounded-2xl shadow-sm border border-slate-200">
         {/* Header Title */}
-        <div className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-md">
+        <div className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 mb-2.5 sm:mb-4 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 sm:p-2.5 bg-gradient-to-tr from-blue-700 to-blue-500 rounded-lg text-white shadow-lg shrink-0">
+              <div className="p-2 sm:p-2.5 bg-gradient-to-tr from-teal-700 to-emerald-500 rounded-lg text-white shadow-sm shrink-0">
                 <FiClipboard className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
               <div>
-                <h1 className="text-base sm:text-xl font-bold tracking-wide text-white leading-tight">
+                <h1 className="text-base sm:text-xl font-bold tracking-wide text-slate-900 leading-tight">
                   Proses Stok Opname Master
                 </h1>
-                <p className="text-[11px] sm:text-xs text-blue-400 font-medium tracking-wider">
+                <p className="text-[11px] sm:text-xs text-teal-700 font-semibold tracking-wider">
                   -BARANG-
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs text-emerald-400 bg-emerald-950/70 border border-emerald-800/80 px-2.5 py-1 rounded-full font-medium shadow-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 Draft Tersimpan Otomatis
               </span>
             </div>
@@ -924,13 +1029,13 @@ export default function HalamanOpname() {
         </div>
 
         {/* STICKY WRAPPER: FORM HEADER + SCAN BARCODE */}
-        <div className="sticky top-14 sm:top-16 z-30 bg-slate-900 pt-1 pb-2 -mx-1.5 px-1.5 sm:-mx-4 sm:px-4 shadow-lg">
+        <div className="sticky top-14 sm:top-16 z-30 bg-slate-50/95 backdrop-blur-xs pt-1 pb-2 -mx-2 px-2 sm:-mx-4 sm:px-4">
           {/* Form Header */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 sm:gap-5 bg-slate-800 p-2.5 sm:p-4 rounded-xl border border-slate-700 mb-2 sm:mb-3 shadow-md">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 sm:gap-5 bg-white p-2.5 sm:p-4 rounded-xl border border-slate-200 mb-2 sm:mb-3 shadow-xs">
             <div className="space-y-1.5 sm:space-y-3">
               <div>
                 <div className="flex items-center gap-2 sm:gap-4">
-                  <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                  <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-600 shrink-0">
                     No Buku :
                   </label>
                   <input
@@ -941,21 +1046,22 @@ export default function HalamanOpname() {
                     value={noBuku}
                     onChange={(e) => setNoBuku(e.target.value)}
                     onBlur={() => checkDuplicateNoBuku(noBuku)}
+                    disabled={loading}
                     placeholder="BK 01..."
-                    className={`flex-1 uppercase bg-slate-900 border rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none text-white font-medium ${
+                    className={`flex-1 uppercase bg-slate-50 border rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none text-slate-900 font-semibold ${
                       noBukuExists
-                        ? "border-red-500 focus:border-red-400"
-                        : "border-slate-600 focus:border-blue-500"
+                        ? "border-red-500 focus:border-red-500 bg-red-50/50"
+                        : "border-slate-300 focus:border-teal-600 focus:bg-white"
                     }`}
                   />
                 </div>
                 {checkingNoBuku && (
-                  <p className="text-[10px] text-slate-400 mt-0.5 ml-22 sm:ml-32">
+                  <p className="text-[10px] text-slate-500 mt-0.5 ml-24 sm:ml-32">
                     Mengecek nomor buku...
                   </p>
                 )}
                 {noBukuExists && (
-                  <p className="text-[10px] text-red-400 font-semibold mt-0.5 flex items-center gap-1 ml-22 sm:ml-32">
+                  <p className="text-[10px] text-red-600 font-semibold mt-0.5 flex items-center gap-1 ml-24 sm:ml-32">
                     <FiAlertTriangle className="w-3 h-3 shrink-0" />
                     Nomor buku &quot;{noBuku.trim().toUpperCase()}&quot; sudah terdaftar!
                   </p>
@@ -963,18 +1069,18 @@ export default function HalamanOpname() {
               </div>
 
               <div className="flex items-center gap-2 sm:gap-4">
-                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-600 shrink-0">
                   Tanggal :
                 </label>
                 <input
                   type="date"
                   value={tanggal}
                   onChange={(e) => setTanggal(e.target.value)}
-                  className="flex-1 bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white color-scheme-dark [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert"
+                  className="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-teal-600 focus:bg-white text-slate-900"
                 />
               </div>
               <div className="flex items-center gap-2 sm:gap-4">
-                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-600 shrink-0">
                   Penulis :
                 </label>
                 <input
@@ -984,14 +1090,14 @@ export default function HalamanOpname() {
                   value={penulis}
                   onChange={(e) => setPenulis(e.target.value)}
                   placeholder="NAMA PENULIS..."
-                  className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
+                  className="flex-1 uppercase bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-teal-600 focus:bg-white text-slate-900 font-medium"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5 sm:space-y-3">
               <div className="flex items-center gap-2 sm:gap-4">
-                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-600 shrink-0">
                   Penghitung :
                 </label>
                 <input
@@ -1001,11 +1107,11 @@ export default function HalamanOpname() {
                   value={penghitung}
                   onChange={(e) => setPenghitung(e.target.value)}
                   placeholder="NAMA PENGHITUNG..."
-                  className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
+                  className="flex-1 uppercase bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-teal-600 focus:bg-white text-slate-900 font-medium"
                 />
               </div>
               <div className="flex items-center gap-2 sm:gap-4">
-                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-300 shrink-0">
+                <label className="w-20 sm:w-28 font-semibold text-[11px] sm:text-sm text-slate-600 shrink-0">
                   Pengawas :
                 </label>
                 <input
@@ -1015,17 +1121,17 @@ export default function HalamanOpname() {
                   value={pengawas}
                   onChange={(e) => setPengawas(e.target.value)}
                   placeholder="NAMA PENGAWAS..."
-                  className="flex-1 uppercase bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white font-medium"
+                  className="flex-1 uppercase bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-teal-600 focus:bg-white text-slate-900 font-medium"
                 />
               </div>
             </div>
           </div>
 
           {/* SCAN BARCODE (RINGKAS & HEMAT RUANG) */}
-          <div className="relative bg-slate-800 p-2 sm:p-3 rounded-xl border border-blue-600/50 shadow-lg">
+          <div className="relative bg-white p-2 sm:p-3 rounded-xl border border-teal-200 shadow-sm">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <FiSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <FiSearch className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   ref={quickInputRef}
                   type="text"
@@ -1033,7 +1139,7 @@ export default function HalamanOpname() {
                   onChange={(e) => handleQuickSearchChange(e.target.value)}
                   onKeyDown={handleQuickSearchKeyDown}
                   placeholder="Scan Barcode / Ketik Nama Barang (↑↓ / PgUp PgDn)"
-                  className="w-full bg-slate-950 border-2 border-blue-500/80 rounded-lg pl-8 sm:pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full bg-slate-50 border-2 border-teal-500 rounded-lg pl-8 sm:pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20"
                 />
                 {quickKeyword && (
                   <button
@@ -1043,7 +1149,7 @@ export default function HalamanOpname() {
                       setQuickResults([]);
                       setShowQuickDropdown(false);
                     }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                   >
                     <FiX className="w-4 h-4" />
                   </button>
@@ -1053,7 +1159,7 @@ export default function HalamanOpname() {
               <button
                 type="button"
                 onClick={startCamera}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3 py-1.5 sm:py-2 rounded-lg font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition shrink-0 text-xs sm:text-sm"
+                className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white px-3 py-1.5 sm:py-2 rounded-lg font-bold flex items-center gap-1.5 shadow-xs active:scale-95 transition shrink-0 text-xs sm:text-sm"
                 title="Buka Kamera Barcode Scanner (HP)"
               >
                 <FiCamera className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1063,18 +1169,18 @@ export default function HalamanOpname() {
 
             {/* Dropdown Rekomendasi Pencarian (Tampil Semua) */}
             {showQuickDropdown && (
-              <div className="absolute left-0 right-0 top-full mt-1.5 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl z-40 max-h-[60vh] overflow-y-auto p-1.5 space-y-1">
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-40 max-h-[60vh] overflow-y-auto p-1.5 space-y-1">
                 {quickSearching ? (
-                  <div className="p-2.5 text-center text-slate-400 text-xs">
+                  <div className="p-2.5 text-center text-slate-500 text-xs">
                     Mencari semua barang...
                   </div>
                 ) : quickResults.length === 0 ? (
-                  <div className="p-2.5 text-center text-slate-400 text-xs">
+                  <div className="p-2.5 text-center text-slate-500 text-xs">
                     Barang tidak ditemukan.
                   </div>
                 ) : (
                   <>
-                    <div className="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xs px-2 py-1 text-[10px] text-blue-300 font-semibold border-b border-slate-700 flex items-center justify-between">
+                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-xs px-2 py-1 text-[10px] text-teal-700 font-semibold border-b border-slate-200 flex items-center justify-between">
                       <span>Ditemukan {quickResults.length} barang</span>
                       <span className="text-slate-400">
                         ↑↓ / PgUp PgDn • Enter pilih
@@ -1092,28 +1198,28 @@ export default function HalamanOpname() {
                           onClick={() => addItemToKeranjang(b)}
                           className={`p-2 rounded-lg cursor-pointer flex justify-between items-center transition border ${
                             isHighlighted
-                              ? "bg-blue-700/70 border-blue-400 ring-1 ring-blue-400"
-                              : "bg-slate-900/90 hover:bg-blue-900/40 border-slate-700 hover:border-blue-500"
+                              ? "bg-teal-50 border-teal-500 ring-1 ring-teal-500"
+                              : "bg-slate-50 hover:bg-teal-50/60 border-slate-200 hover:border-teal-300"
                           }`}
                         >
                           <div>
-                            <div className="font-mono text-blue-300 text-[11px] flex items-center gap-1.5">
+                            <div className="font-mono text-teal-700 text-[11px] flex items-center gap-1.5">
                               <span className="font-bold">{b.kd_br}</span>
                               {b.barcode && (
-                                <span className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700">
+                                <span className="text-[9px] text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
                                   Barcode: {b.barcode}
                                 </span>
                               )}
                             </div>
-                            <div className="text-white font-medium text-xs line-clamp-1">
+                            <div className="text-slate-900 font-semibold text-xs line-clamp-1">
                               {b.nama}
                             </div>
                           </div>
                           <div className="text-right shrink-0 ml-2">
-                            <div className="text-[9px] text-slate-300">
+                            <div className="text-[9px] text-slate-500">
                               Sat: {b.satuan}
                             </div>
-                            <div className="text-cyan-300 font-mono text-[11px] font-bold">
+                            <div className="text-cyan-700 font-mono text-[11px] font-bold">
                               {formatAngka(getBarangHppTerakhir(b))}
                             </div>
                           </div>
@@ -1128,9 +1234,9 @@ export default function HalamanOpname() {
         </div>
 
         {/* Info Jumlah Barang Dihitung */}
-        <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-300 px-1 mb-2">
-          <span>Daftar Barang Dihitung</span>
-          <span className="font-bold text-blue-400">
+        <div className="flex items-center justify-between text-[11px] sm:text-xs text-slate-600 px-1 mb-2">
+          <span className="font-semibold">Daftar Barang Dihitung</span>
+          <span className="font-bold text-teal-700">
             {items.length} Item ({formatAngka(totalQty)} Qty)
           </span>
         </div>
@@ -1138,7 +1244,7 @@ export default function HalamanOpname() {
         {/* TAMPILAN HP: Daftar Kartu Opname */}
         <div className="md:hidden space-y-2 mb-4">
           {items.length === 0 ? (
-            <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-5 text-center text-xs text-slate-400">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-xs text-slate-500">
               Belum ada barang. Scan barcode atau ketik nama/kode di atas.
             </div>
           ) : (
@@ -1146,32 +1252,32 @@ export default function HalamanOpname() {
               <div
                 key={`m-${item.kd_br}-${idx}`}
                 onClick={() => handleOpenActionModal(idx)}
-                className="rounded-xl border border-slate-700 bg-slate-800/90 p-2.5 space-y-2 active:bg-slate-800"
+                className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-2 shadow-xs active:bg-slate-50"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-[10px] font-mono">
-                      <span className="font-bold text-blue-400">
+                      <span className="font-bold text-teal-700">
                         #{idx + 1}
                       </span>
-                      <span className="text-blue-300 font-semibold">
+                      <span className="text-blue-700 font-semibold">
                         {item.kd_br}
                       </span>
-                      <span className="rounded bg-slate-700 px-1.5 py-0.5 text-slate-300">
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600 border border-slate-200">
                         {item.satuan || "-"}
                       </span>
                     </div>
-                    <p className="text-xs font-semibold text-white leading-snug mt-0.5 break-words">
+                    <p className="text-xs font-semibold text-slate-900 leading-snug mt-0.5 break-words">
                       {item.nama_br}
                     </p>
                   </div>
                   <FiEdit2 className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-700/80">
+                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-100">
                   <div className="text-[11px]">
                     <span className="text-slate-400 block text-[9px]">HPP</span>
-                    <span className="font-mono font-bold text-cyan-300">
+                    <span className="font-mono font-bold text-cyan-700">
                       {formatAngka(item.hpp)}
                     </span>
                   </div>
@@ -1183,14 +1289,13 @@ export default function HalamanOpname() {
                     <button
                       type="button"
                       onClick={() => handleQtyAdjust(idx, -1)}
-                      className="bg-slate-900 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center"
+                      className="bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300 rounded w-6 h-7 flex items-center justify-center"
                     >
                       <FiMinus className="w-3 h-3" />
                     </button>
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        setFocusedMobileQtyIndex(null);
                         focusQuickInput(true);
                       }}
                       className="inline-block"
@@ -1204,25 +1309,21 @@ export default function HalamanOpname() {
                         enterKeyHint="done"
                         maxLength={4}
                         value={item.qty}
-                        onFocus={(e) => {
-                          setFocusedMobileQtyIndex(idx);
-                          e.target.select();
-                        }}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) => handleQtyChange(idx, e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.keyCode === 13) {
                             e.preventDefault();
-                            setFocusedMobileQtyIndex(null);
                             focusQuickInput(true);
                           }
                         }}
-                        className="w-11 h-7 bg-slate-950 text-center text-white rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-xs font-bold"
+                        className="w-11 h-7 bg-white text-center text-slate-900 rounded border border-fuchsia-400 focus:outline-none focus:border-teal-600 font-mono text-xs font-bold"
                       />
                     </form>
                     <button
                       type="button"
                       onClick={() => handleQtyAdjust(idx, 1)}
-                      className="bg-slate-900 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center"
+                      className="bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300 rounded w-6 h-7 flex items-center justify-center"
                     >
                       <FiPlus className="w-3 h-3" />
                     </button>
@@ -1232,27 +1333,11 @@ export default function HalamanOpname() {
                     <span className="text-slate-400 block text-[9px]">
                       SUB TOTAL
                     </span>
-                    <span className="font-mono font-bold text-emerald-400">
+                    <span className="font-mono font-bold text-emerald-700">
                       {formatAngka(item.sub_total)}
                     </span>
                   </div>
                 </div>
-
-                {focusedMobileQtyIndex === idx && (
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFocusedMobileQtyIndex(null);
-                      focusQuickInput(true);
-                    }}
-                    className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-1.5 shadow-md transition"
-                  >
-                    <FiCheckCircle className="w-4 h-4" />
-                    Selesai
-                  </button>
-                )}
               </div>
             ))
           )}
@@ -1262,28 +1347,30 @@ export default function HalamanOpname() {
         <div
           ref={tableContainerRef}
           tabIndex={0}
-          className="hidden md:block overflow-x-auto border border-slate-700 rounded-lg mb-4 max-h-[550px] overflow-y-auto focus:outline-none"
+          className="hidden md:block overflow-x-auto border border-slate-200 bg-white rounded-xl mb-4 max-h-[550px] overflow-y-auto focus:outline-none shadow-xs"
         >
           <table className="w-full text-left border-collapse text-xs md:text-sm">
             <thead className="sticky top-0 z-10">
-              <tr className="bg-slate-700 text-slate-200">
-                <th className="p-2 border border-slate-600 w-14 text-center">
+              <tr className="bg-slate-100 text-slate-700">
+                <th className="p-2.5 border-b border-r border-slate-200 w-14 text-center">
                   NO
                 </th>
-                <th className="p-2 border border-slate-600 w-28">KODE</th>
-                <th className="p-2 border border-slate-600 min-w-[160px]">
+                <th className="p-2.5 border-b border-r border-slate-200 w-28">
+                  KODE
+                </th>
+                <th className="p-2.5 border-b border-r border-slate-200 min-w-[160px]">
                   NAMA BARANG
                 </th>
-                <th className="p-2 border border-slate-600 w-16 text-center">
+                <th className="p-2.5 border-b border-r border-slate-200 w-16 text-center">
                   SAT
                 </th>
-                <th className="p-2 border border-slate-600 w-28 bg-cyan-900 text-cyan-200 text-right">
+                <th className="p-2.5 border-b border-r border-slate-200 w-28 bg-cyan-50 text-cyan-800 text-right">
                   HPP
                 </th>
-                <th className="p-2 border border-slate-600 w-32 bg-fuchsia-900 text-fuchsia-200 text-center">
+                <th className="p-2.5 border-b border-r border-slate-200 w-32 bg-fuchsia-50 text-fuchsia-800 text-center">
                   QTY
                 </th>
-                <th className="p-2 border border-slate-600 w-28 text-right">
+                <th className="p-2.5 border-b border-slate-200 w-28 text-right">
                   SUB TOTAL
                 </th>
               </tr>
@@ -1293,7 +1380,7 @@ export default function HalamanOpname() {
                 <tr>
                   <td
                     colSpan={7}
-                    className="p-6 text-center text-slate-400 text-xs md:text-sm"
+                    className="p-6 text-center text-slate-500 text-xs md:text-sm"
                   >
                     Belum ada barang. Scan barcode atau ketik nama/kode di atas.
                   </td>
@@ -1303,30 +1390,30 @@ export default function HalamanOpname() {
                   <tr
                     key={`${item.kd_br}-${idx}`}
                     onClick={() => handleOpenActionModal(idx)}
-                    className="hover:bg-slate-800 cursor-pointer transition-colors"
+                    className="hover:bg-teal-50/50 cursor-pointer transition-colors border-b border-slate-100"
                   >
-                    <td className="p-2 border border-slate-700 text-center bg-slate-800 text-blue-400 font-bold">
+                    <td className="p-2 border-r border-slate-100 text-center bg-slate-50 text-teal-700 font-bold">
                       {idx + 1}
                     </td>
                     <td
-                      className="p-2 border border-slate-700 text-blue-300 font-mono"
+                      className="p-2 border-r border-slate-100 text-blue-700 font-mono font-medium"
                       title="Klik untuk edit/hapus"
                     >
                       {item.kd_br}
                     </td>
                     <td
-                      className="p-2 border border-slate-700 truncate max-w-xs"
+                      className="p-2 border-r border-slate-100 truncate max-w-xs text-slate-900 font-medium"
                       title={item.nama_br}
                     >
                       {item.nama_br}
                     </td>
-                    <td className="p-2 border border-slate-700 text-center text-slate-300">
+                    <td className="p-2 border-r border-slate-100 text-center text-slate-600">
                       {item.satuan || "-"}
                     </td>
-                    <td className="p-2 border border-slate-700 text-right bg-cyan-950/40 font-mono">
+                    <td className="p-2 border-r border-slate-100 text-right bg-cyan-50/40 font-mono text-cyan-800">
                       {formatAngka(item.hpp)}
                     </td>
-                    <td className="p-1.5 border border-slate-700 bg-fuchsia-950/40 text-center">
+                    <td className="p-1.5 border-r border-slate-100 bg-fuchsia-50/40 text-center">
                       <div className="flex items-center justify-center gap-0.5">
                         <button
                           type="button"
@@ -1334,7 +1421,7 @@ export default function HalamanOpname() {
                             e.stopPropagation();
                             handleQtyAdjust(idx, -1);
                           }}
-                          className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
+                          className="bg-white hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
                           title="Kurangi 1"
                         >
                           <FiMinus className="w-3 h-3" />
@@ -1368,7 +1455,7 @@ export default function HalamanOpname() {
                                 focusQuickInput(true);
                               }
                             }}
-                            className="w-12 bg-slate-900 text-center text-white py-0.5 rounded border border-fuchsia-700 focus:outline-none focus:border-white font-mono text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-12 bg-white text-center text-slate-900 py-0.5 rounded border border-fuchsia-400 focus:outline-none focus:border-teal-600 font-mono text-sm font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                           />
                         </form>
@@ -1379,14 +1466,14 @@ export default function HalamanOpname() {
                             e.stopPropagation();
                             handleQtyAdjust(idx, 1);
                           }}
-                          className="bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
+                          className="bg-white hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300 rounded w-6 h-7 flex items-center justify-center text-[10px] shrink-0"
                           title="Tambah 1"
                         >
                           <FiPlus className="w-3 h-3" />
                         </button>
                       </div>
                     </td>
-                    <td className="p-2 border border-slate-700 text-right font-mono font-semibold text-emerald-400">
+                    <td className="p-2 text-right font-mono font-bold text-emerald-700">
                       {formatAngka(item.sub_total)}
                     </td>
                   </tr>
@@ -1399,21 +1486,21 @@ export default function HalamanOpname() {
         {/* Catatan & Grand Total */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6 items-center mb-5">
           <div className="lg:col-span-2 space-y-1">
-            <label className="text-xs sm:text-sm font-semibold text-slate-300">
+            <label className="text-xs sm:text-sm font-semibold text-slate-600">
               Catatan :
             </label>
             <input
               type="text"
               value={catatan}
               onChange={(e) => setCatatan(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 text-white"
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs sm:text-sm focus:outline-none focus:border-teal-600 text-slate-900"
             />
           </div>
-          <div className="bg-black border border-slate-700 p-2.5 sm:p-4 rounded-xl text-right">
-            <span className="text-[10px] sm:text-xs text-slate-400 font-bold block mb-0.5">
+          <div className="bg-white border-2 border-teal-200 p-2.5 sm:p-4 rounded-xl text-right shadow-xs">
+            <span className="text-[10px] sm:text-xs text-slate-500 font-bold block mb-0.5">
               {items.length} ITEM ({formatAngka(totalQty)} QTY) • GRAND TOTAL (Rp) :
             </span>
-            <span className="text-xl sm:text-3xl font-extrabold text-fuchsia-400 font-mono">
+            <span className="text-xl sm:text-3xl font-extrabold text-teal-700 font-mono">
               {formatAngka(grandTotal)}
             </span>
           </div>
@@ -1423,9 +1510,9 @@ export default function HalamanOpname() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
           <button
             type="button"
-            onClick={handleSimpan}
+            onClick={handleRequestSimpan}
             disabled={loading || noBukuExists}
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow transition text-sm sm:text-base"
+            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow-xs transition text-sm sm:text-base"
           >
             <FiSave className="w-4 h-4 sm:w-5 sm:h-5" />
             {loading ? "Menyimpan..." : "Simpan Opname"}
@@ -1435,25 +1522,148 @@ export default function HalamanOpname() {
             type="button"
             onClick={handleDownloadPdf}
             disabled={items.length === 0}
-            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow transition text-sm sm:text-base"
+            className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow-xs transition text-sm sm:text-base"
           >
             <FiDownload className="w-4 h-4 sm:w-5 sm:h-5" />
             Download PDF
           </button>
         </div>
 
+        {/* MODAL KONFIRMASI SIMPAN OPNAME (BATAL / OK) */}
+        {showSaveConfirmModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[70] p-4">
+            <div className="bg-white border border-slate-200 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+              <div className="p-4 bg-teal-700 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FiSave className="w-5 h-5 text-emerald-300" />
+                  <h3 className="font-bold text-sm sm:text-base">
+                    Konfirmasi Simpan Opname
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSaveConfirmModal(false)}
+                  className="text-teal-100 hover:text-white p-1 rounded-lg"
+                >
+                  <FiX className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-3 text-xs sm:text-sm text-slate-700">
+                <p className="font-medium text-slate-800">
+                  Apakah Anda yakin ingin menyimpan data stok opname berikut?
+                </p>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">No Buku</span>
+                    <span className="font-bold text-slate-900 font-mono">
+                      {noBuku.trim().toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">Tanggal</span>
+                    <span className="font-semibold text-slate-900">
+                      {tanggal}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">Total Item / Qty</span>
+                    <span className="font-semibold text-slate-900">
+                      {items.length} Item ({formatAngka(totalQty)} Qty)
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2 pt-1.5 border-t border-slate-200">
+                    <span className="text-slate-600 font-semibold">
+                      Grand Total
+                    </span>
+                    <span className="font-extrabold text-teal-700 font-mono">
+                      Rp {formatAngka(grandTotal)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveConfirmModal(false)}
+                  className="flex-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition active:scale-95"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={executeSimpan}
+                  disabled={loading}
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 text-xs sm:text-sm shadow-xs transition active:scale-95"
+                >
+                  <FiCheckCircle className="w-4 h-4" />
+                  OK, Lanjutkan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL NOTIFIKASI / HASIL SIMPAN (IN-APP POPUP) */}
+        {saveFeedbackModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[75] p-4">
+            <div className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+              <div
+                className={`p-4 flex items-center gap-2.5 text-white ${
+                  saveFeedbackModal.type === "success"
+                    ? "bg-emerald-600"
+                    : saveFeedbackModal.type === "warning"
+                    ? "bg-amber-500"
+                    : "bg-red-600"
+                }`}
+              >
+                {saveFeedbackModal.type === "success" ? (
+                  <FiCheckCircle className="w-5 h-5 shrink-0" />
+                ) : (
+                  <FiAlertTriangle className="w-5 h-5 shrink-0" />
+                )}
+                <h3 className="font-bold text-sm sm:text-base">
+                  {saveFeedbackModal.title}
+                </h3>
+              </div>
+
+              <div className="p-4 text-xs sm:text-sm text-slate-700 leading-relaxed">
+                {saveFeedbackModal.message}
+              </div>
+
+              <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleCloseFeedbackModal}
+                  className={`w-full sm:w-auto px-6 py-2 rounded-xl font-bold text-xs sm:text-sm text-white transition active:scale-95 ${
+                    saveFeedbackModal.type === "success"
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : saveFeedbackModal.type === "warning"
+                      ? "bg-amber-500 hover:bg-amber-600"
+                      : "bg-red-600 hover:bg-red-700"
+                  }`}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL KAMERA BARCODE SCANNER (KHUSUS HP) */}
         {showCameraModal && (
-          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
-              <div className="p-3 bg-slate-700 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-white font-bold text-sm">
-                  <FiCamera className="text-emerald-400 w-4 h-4" />
+          <div className="fixed inset-0 bg-slate-900/75 flex items-center justify-center z-[60] p-4">
+            <div className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+              <div className="p-3 bg-teal-700 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-sm">
+                  <FiCamera className="text-emerald-300 w-4 h-4" />
                   <span>Arahkan Kamera ke Barcode</span>
                 </div>
                 <button
                   onClick={stopCamera}
-                  className="text-slate-300 hover:text-white p-1"
+                  className="text-teal-100 hover:text-white p-1"
                 >
                   <FiX className="w-5 h-5" />
                 </button>
@@ -1461,24 +1671,24 @@ export default function HalamanOpname() {
 
               <div className="p-4 flex flex-col items-center">
                 {cameraError ? (
-                  <div className="text-red-400 text-xs text-center py-8">
+                  <div className="text-red-600 text-xs text-center py-8 px-2">
                     {cameraError}
                   </div>
                 ) : (
-                  <div className="w-full relative rounded-xl overflow-hidden bg-black flex items-center justify-center border-2 border-emerald-500/50">
+                  <div className="w-full relative rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center border-2 border-teal-500">
                     <div id="camera-reader" className="w-full h-64"></div>
                   </div>
                 )}
-                <p className="text-[11px] text-slate-400 text-center mt-3">
+                <p className="text-[11px] text-slate-500 text-center mt-3">
                   Pastikan barcode berada di dalam kotak pemindai dan pencahayaan cukup.
                 </p>
               </div>
 
-              <div className="p-3 bg-slate-700/40 border-t border-slate-700 text-center">
+              <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
                 <button
                   type="button"
                   onClick={stopCamera}
-                  className="bg-slate-700 hover:bg-slate-600 text-white px-5 py-1.5 rounded-lg text-xs font-semibold"
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 px-5 py-1.5 rounded-lg text-xs font-semibold"
                 >
                   Tutup Kamera
                 </button>
@@ -1489,51 +1699,53 @@ export default function HalamanOpname() {
 
         {/* POPUP MODAL: EDIT & HAPUS BARANG DARI BARIS TABEL */}
         {showActionModal && currentSelectedItem && selectedItemIndex !== null && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-600 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
-              <div className="p-4 bg-slate-700/80 border-b border-slate-600 flex items-center justify-between">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+            <div className="bg-white border border-slate-200 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+              <div className="p-4 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <FiEdit2 className="text-blue-400 w-5 h-5" />
-                  <h3 className="font-bold text-base text-white">
+                  <FiEdit2 className="text-teal-700 w-5 h-5" />
+                  <h3 className="font-bold text-base text-slate-900">
                     Edit / Hapus Barang
                   </h3>
                 </div>
                 <button
                   onClick={() => setShowActionModal(false)}
-                  className="text-slate-300 hover:text-white p-1 rounded-lg"
+                  className="text-slate-500 hover:text-slate-800 p-1 rounded-lg"
                 >
                   <FiX className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="p-4 space-y-4">
-                <div className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700">
-                  <div className="flex items-center justify-between text-xs text-blue-400 font-mono mb-1">
-                    <span>KODE: {currentSelectedItem.kd_br}</span>
-                    <span className="text-slate-400">
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs text-blue-700 font-mono mb-1">
+                    <span className="font-bold">
+                      KODE: {currentSelectedItem.kd_br}
+                    </span>
+                    <span className="text-slate-500">
                       SAT: {currentSelectedItem.satuan}
                     </span>
                   </div>
-                  <h4 className="font-semibold text-white text-sm mb-2">
+                  <h4 className="font-semibold text-slate-900 text-sm mb-2">
                     {currentSelectedItem.nama_br}
                   </h4>
-                  <div className="flex items-center justify-between text-xs border-t border-slate-800 pt-2 font-mono">
-                    <span className="text-slate-400">Harga Pokok (HPP):</span>
-                    <span className="text-cyan-400 font-bold">
+                  <div className="flex items-center justify-between text-xs border-t border-slate-200 pt-2 font-mono">
+                    <span className="text-slate-500">Harga Pokok (HPP):</span>
+                    <span className="text-cyan-700 font-bold">
                       Rp {formatAngka(currentSelectedItem.hpp)}
                     </span>
                   </div>
                 </div>
 
-                <div className="bg-slate-900/60 p-3.5 rounded-xl border border-fuchsia-900/40">
-                  <label className="block text-xs font-bold text-fuchsia-300 mb-2 text-center uppercase tracking-wider">
+                <div className="bg-fuchsia-50/50 p-3.5 rounded-xl border border-fuchsia-200">
+                  <label className="block text-xs font-bold text-fuchsia-800 mb-2 text-center uppercase tracking-wider">
                     Jumlah Qty Opname
                   </label>
                   <div className="flex items-center justify-center gap-3">
                     <button
                       type="button"
                       onClick={() => handleQtyAdjust(selectedItemIndex, -1)}
-                      className="w-12 h-12 bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded-xl flex items-center justify-center font-bold text-lg transition active:scale-95"
+                      className="w-12 h-12 bg-white hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300 rounded-xl flex items-center justify-center font-bold text-lg transition active:scale-95"
                     >
                       <FiMinus className="w-5 h-5" />
                     </button>
@@ -1563,32 +1775,32 @@ export default function HalamanOpname() {
                             focusQuickInput(true);
                           }
                         }}
-                        className="w-24 h-12 bg-slate-950 text-center text-white rounded-xl border-2 border-fuchsia-600 focus:outline-none focus:border-white font-mono text-xl font-bold"
+                        className="w-24 h-12 bg-white text-center text-slate-900 rounded-xl border-2 border-fuchsia-400 focus:outline-none focus:border-teal-600 font-mono text-xl font-bold"
                       />
                     </form>
                     <button
                       type="button"
                       onClick={() => handleQtyAdjust(selectedItemIndex, 1)}
-                      className="w-12 h-12 bg-slate-800 hover:bg-slate-700 text-fuchsia-300 border border-fuchsia-700 rounded-xl flex items-center justify-center font-bold text-lg transition active:scale-95"
+                      className="w-12 h-12 bg-white hover:bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300 rounded-xl flex items-center justify-center font-bold text-lg transition active:scale-95"
                     >
                       <FiPlus className="w-5 h-5" />
                     </button>
                   </div>
 
                   <div className="mt-3 text-center text-xs font-mono">
-                    <span className="text-slate-400">Subtotal: </span>
-                    <span className="text-emerald-400 font-bold text-sm">
+                    <span className="text-slate-500">Subtotal: </span>
+                    <span className="text-emerald-700 font-bold text-sm">
                       Rp {formatAngka(currentSelectedItem.sub_total)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="p-4 bg-slate-700/40 border-t border-slate-700 flex items-center gap-3">
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleClearCurrentRow}
-                  className="flex-1 bg-red-600/20 hover:bg-red-600 border border-red-500 text-red-200 hover:text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm active:scale-95"
+                  className="flex-1 bg-red-50 hover:bg-red-600 border border-red-300 text-red-700 hover:text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm active:scale-95"
                 >
                   <FiTrash2 className="w-4 h-4" />
                   Hapus Baris
@@ -1599,7 +1811,7 @@ export default function HalamanOpname() {
                     setShowActionModal(false);
                     focusQuickInput(true);
                   }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm shadow-md active:scale-95"
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm shadow-xs active:scale-95"
                 >
                   <FiCheckCircle className="w-4 h-4" />
                   Selesai
